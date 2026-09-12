@@ -1,0 +1,8 @@
+P3
+# Warm/cool checker albedo. Intentionally tiny; the sampler demonstrates tiling.
+4 4
+255
+220 155 75   45 85 145   220 155 75   45 85 145
+45 85 145    220 155 75  45 85 145    220 155 75
+220 155 75   45 85 145   220 155 75   45 85 145
+45 85 145    220 155 75  45 85 145    220 155 75

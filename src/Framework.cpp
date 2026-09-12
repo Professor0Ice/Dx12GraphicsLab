@@ -24,10 +24,14 @@ int Framework::Run()
         if (m_input.WasPressed('2')) m_renderer.SetCullingMode(CullingMode::Frustum);
         if (m_input.WasPressed('3')) m_renderer.SetCullingMode(CullingMode::Octree);
         if (m_input.WasPressed('O')) m_renderer.ToggleOctreeCulling();
+        if (m_input.WasPressed('T')) m_textureAnimationEnabled = !m_textureAnimationEnabled;
+
+        if (m_textureAnimationEnabled)
+            m_textureAnimationTime += m_timer.DeltaSeconds();
 
         const auto mouse = m_input.ConsumeMouseDelta();
         m_camera.Update(m_input, mouse, m_timer.DeltaSeconds());
-        m_renderer.Render(m_camera, m_timer.TotalSeconds());
+        m_renderer.Render(m_camera, m_textureAnimationTime);
         UpdateWindowTitle(m_timer.DeltaSeconds());
         m_input.EndFrame();
     }
@@ -46,6 +50,7 @@ void Framework::UpdateWindowTitle(float deltaTime)
     title << L"DX12 Lab | WASD + mouse | Octree culling [O]: "
           << (m_renderer.IsOctreeCullingEnabled() ? L"ON" : L"OFF")
           << L" | mode [1/2/3]: " << mode
+          << L" | textures [T]: " << (m_textureAnimationEnabled ? L"MOVING" : L"PAUSED")
           << L" | visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount();
     m_window.SetTitle(title.str());
 }

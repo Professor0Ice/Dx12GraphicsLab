@@ -42,7 +42,7 @@
   <ItemGroup>
     <ClInclude Include="include\Camera.hpp" /><ClInclude Include="include\Common.hpp" /><ClInclude Include="include\Framework.hpp" /><ClInclude Include="include\GBuffer.hpp" /><ClInclude Include="include\InputDevice.hpp" /><ClInclude Include="include\Mesh.hpp" /><ClInclude Include="include\Octree.hpp" /><ClInclude Include="include\RenderingSystem.hpp" /><ClInclude Include="include\Texture.hpp" /><ClInclude Include="include\Timer.hpp" /><ClInclude Include="include\Window.hpp" />
   </ItemGroup>
-  <ItemGroup><None Include="shader\Geometry.hlsl" /><None Include="shader\Lighting.hlsl" /><None Include="shader\Shadow.hlsl" /><None Include="shader\ShadowTessellation.hlsl" /><None Include="shader\Tessellation.hlsl" /><None Include="assets\showcase.obj" /><None Include="assets\showcase.mtl" /><None Include="assets\checker.ppm" /><None Include="assets\normal.ppm" /><None Include="assets\displacement.ppm" /></ItemGroup>
+  <ItemGroup><None Include="shader\Geometry.hlsl" /><None Include="shader\Lighting.hlsl" /><None Include="shader\Shadow.hlsl" /><None Include="shader\ShadowTessellation.hlsl" /><None Include="shader\Tessellation.hlsl" /><None Include="assets\showcase.obj" /><None Include="assets\showcase.mtl" /><None Include="assets\Gato.obj" /><None Include="assets\Gato.mtl" /><None Include="assets\Gato.ppm" /><None Include="assets\checker.ppm" /><None Include="assets\normal.ppm" /><None Include="assets\displacement.ppm" /></ItemGroup>
   <ItemGroup><None Include="ARCHITECTURE.md" /><None Include="README.md" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

@@ -37,13 +37,44 @@ void Texture::LoadPpm(ID3D12Device* device, ID3D12GraphicsCommandList* commandLi
     std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);
     if (magic == "P6")
     {
-        file.get();
-        std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
-        file.read(reinterpret_cast<char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
-        for (size_t i = 0, j = 0; i < rgb.size(); i += 3, j += 4)
+        const int delimiter = file.get();
+        if (delimiter == '\r' && file.peek() == '\n') file.get();
+        const size_t channelCount = static_cast<size_t>(width) * height * 3;
+        if (maxValue <= 255)
         {
-            rgba[j] = rgb[i]; rgba[j + 1] = rgb[i + 1]; rgba[j + 2] = rgb[i + 2]; rgba[j + 3] = 255;
+            std::vector<uint8_t> rgb(channelCount);
+            file.read(reinterpret_cast<char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
+            if (!file) throw std::runtime_error("Truncated PPM texture: " + path.string());
+            for (size_t i = 0, j = 0; i < rgb.size(); i += 3, j += 4)
+            {
+                rgba[j] = static_cast<uint8_t>(static_cast<unsigned>(rgb[i]) * 255u / maxValue);
+                rgba[j + 1] = static_cast<uint8_t>(static_cast<unsigned>(rgb[i + 1]) * 255u / maxValue);
+                rgba[j + 2] = static_cast<uint8_t>(static_cast<unsigned>(rgb[i + 2]) * 255u / maxValue);
+                rgba[j + 3] = 255;
+            }
         }
+        else if (maxValue <= 65535)
+        {
+            // PPM stores 16-bit P6 samples in network (big-endian) byte order.
+            std::vector<uint8_t> rgb16(channelCount * 2);
+            file.read(reinterpret_cast<char*>(rgb16.data()), static_cast<std::streamsize>(rgb16.size()));
+            if (!file) throw std::runtime_error("Truncated 16-bit PPM texture: " + path.string());
+            for (size_t channel = 0; channel < channelCount; channel += 3)
+            {
+                const size_t source = channel * 2;
+                const size_t destination = (channel / 3) * 4;
+                for (size_t component = 0; component < 3; ++component)
+                {
+                    const size_t offset = source + component * 2;
+                    const unsigned value = (static_cast<unsigned>(rgb16[offset]) << 8) |
+                                           static_cast<unsigned>(rgb16[offset + 1]);
+                    rgba[destination + component] = static_cast<uint8_t>(value * 255u / maxValue);
+                }
+                rgba[destination + 3] = 255;
+            }
+        }
+        else
+            throw std::runtime_error("Unsupported PPM channel range: " + path.string());
     }
     else
     {
@@ -106,4 +137,3 @@ void Texture::LoadPpm(ID3D12Device* device, ID3D12GraphicsCommandList* commandLi
     srv.Texture2D.MipLevels = 1;
     device->CreateShaderResourceView(m_resource.Get(), &srv, srvHandle);
 }
-

@@ -39,12 +39,21 @@ private:
     static constexpr UINT ShadowMapSize = 2048;
     static constexpr UINT64 ConstantsPerFrame = 4 * 1024 * 1024;
 
+    enum class SceneMesh
+    {
+        Cube,
+        Showcase,
+        Gato
+    };
+
     struct SceneObject
     {
         DirectX::XMFLOAT4X4 world{};
         DirectX::BoundingBox bounds{};
         DirectX::XMFLOAT4 color{ 1, 1, 1, 1 };
-        bool useObjMesh = false;
+        DirectX::XMFLOAT4 uvParameters{ 2.0f, 2.0f, 0.06f, 0.025f };
+        SceneMesh mesh = SceneMesh::Cube;
+        UINT textureTableStart = 4;
     };
 
     struct alignas(16) ObjectConstants
@@ -92,6 +101,7 @@ private:
     void CreateConstantUpload();
     void LoadAssets();
     void BuildScene();
+    const Mesh& MeshFor(const SceneObject& object) const;
     void UpdateVisibility(const Camera& camera);
     void UpdateShadowCascades(const Camera& camera);
     void RenderShadowMaps(const Camera& camera, float totalTime);
@@ -152,10 +162,12 @@ private:
     GBuffer m_gbuffer;
     Mesh m_cubeMesh;
     Mesh m_objMesh;
+    Mesh m_gatoMesh;
     Mesh m_tessellationMesh;
     Texture m_albedoTexture;
     Texture m_normalTexture;
     Texture m_displacementTexture;
+    Texture m_gatoTexture;
     std::vector<SceneObject> m_objects;
     std::vector<SceneBounds> m_sceneBounds;
     std::vector<uint32_t> m_visibleIndices;

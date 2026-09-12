@@ -40,6 +40,9 @@
     <None Include="shader\Tessellation.hlsl"><Filter>Shaders</Filter></None>
     <None Include="assets\showcase.obj"><Filter>Assets</Filter></None>
     <None Include="assets\showcase.mtl"><Filter>Assets</Filter></None>
+    <None Include="assets\Gato.obj"><Filter>Assets</Filter></None>
+    <None Include="assets\Gato.mtl"><Filter>Assets</Filter></None>
+    <None Include="assets\Gato.ppm"><Filter>Assets</Filter></None>
     <None Include="assets\checker.ppm"><Filter>Assets</Filter></None>
     <None Include="assets\normal.ppm"><Filter>Assets</Filter></None>
     <None Include="assets\displacement.ppm"><Filter>Assets</Filter></None>

@@ -284,6 +284,8 @@ void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, 
     m_indexView.SizeInBytes = static_cast<UINT>(indexSize);
     m_indexView.Format = DXGI_FORMAT_R32_UINT;
     m_indexCount = static_cast<uint32_t>(data.indices.size());
+    BoundingBox::CreateFromPoints(m_bounds, data.vertices.size(),
+                                  &data.vertices.front().position, sizeof(Vertex));
     m_submeshes = data.submeshes;
     m_materials = data.materials;
 }

@@ -464,27 +464,36 @@ void RenderingSystem::LoadAssets()
     m_cubeMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::CubeData());
     m_tessellationMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::TessellatedQuadData());
     m_objMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::LoadObj(m_runtimeDirectory / L"assets/showcase.obj"));
+    m_gatoMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::LoadObj(m_runtimeDirectory / L"assets/Gato.obj"));
     m_albedoTexture.LoadPpm(m_device.Get(), m_commandList.Get(), m_runtimeDirectory / L"assets/checker.ppm", CpuSrv(4));
     m_normalTexture.LoadPpm(m_device.Get(), m_commandList.Get(), m_runtimeDirectory / L"assets/normal.ppm", CpuSrv(5));
     m_displacementTexture.LoadPpm(m_device.Get(), m_commandList.Get(), m_runtimeDirectory / L"assets/displacement.ppm", CpuSrv(6));
+    m_gatoTexture.LoadPpm(m_device.Get(), m_commandList.Get(), m_runtimeDirectory / L"assets/Gato.ppm", CpuSrv(7));
+    m_device->CopyDescriptorsSimple(1, CpuSrv(8), CpuSrv(5), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->CopyDescriptorsSimple(1, CpuSrv(9), CpuSrv(6), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 void RenderingSystem::BuildScene()
 {
-    auto addObject = [&](XMFLOAT3 position, XMFLOAT3 scale, XMFLOAT4 color, bool obj = false)
+    auto addObject = [&](XMFLOAT3 position, XMFLOAT3 scale, XMFLOAT4 color,
+                         SceneMesh mesh = SceneMesh::Cube, float yaw = 0.0f,
+                         XMFLOAT4 uvParameters = XMFLOAT4{ 2.0f, 2.0f, 0.06f, 0.025f })
     {
         SceneObject object;
-        XMMATRIX world = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixTranslation(position.x, position.y, position.z);
+        XMMATRIX world = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixRotationY(yaw) *
+                         XMMatrixTranslation(position.x, position.y, position.z);
         XMStoreFloat4x4(&object.world, world);
-        BoundingBox local({ 0, 0, 0 }, { .5f, .5f, .5f });
-        local.Transform(object.bounds, world);
+        object.mesh = mesh;
+        MeshFor(object).Bounds().Transform(object.bounds, world);
         object.color = color;
-        object.useObjMesh = obj;
+        object.uvParameters = uvParameters;
+        object.textureTableStart = mesh == SceneMesh::Gato ? 7u : 4u;
         m_objects.push_back(object);
     };
 
-    // Lightweight Sponza-like hall: floor, ceiling, walls and colonnades.
-    addObject({ 0,-.3f,30 }, { 28,.5f,80 }, { .55f,.52f,.45f,1 });
+    addObject({ 0,0,0 }, { 2,2,2 }, { .10f,.10f,.10f,1 });
+
+    addObject({ 0,.0f,0 }, { 5,.5f,5 }, { .10f,.10f,.10f,1 });
     addObject({ 0,14.5f,30 }, { 28,.5f,80 }, { .30f,.32f,.36f,1 });
     addObject({ -14,7,30 }, { .5f,14,80 }, { .55f,.32f,.25f,1 });
     addObject({  14,7,30 }, { .5f,14,80 }, { .25f,.35f,.55f,1 });
@@ -494,9 +503,10 @@ void RenderingSystem::BuildScene()
         addObject({ -9,3.5f,zz }, { 1.0f,7.0f,1.0f }, { .7f,.65f,.52f,1 });
         addObject({  9,3.5f,zz }, { 1.0f,7.0f,1.0f }, { .7f,.65f,.52f,1 });
     }
-    addObject({ 0,1.1f,8 }, { 2.2f,2.2f,2.2f }, { .8f,.45f,.18f,1 }, true);
+    addObject({ 0,1.1f,8 }, { 2.2f,2.2f,2.2f }, { .8f,.45f,.18f,1 }, SceneMesh::Showcase);
+    addObject({ 4.5f,-.13f,9 }, { .09f,.09f,.09f }, { 1,1,1,1 },
+              SceneMesh::Gato, XM_PI, { 1,1,0.04f,0.02f });
 
-    // 2048 objects form a stress field for culling outside and around the hall.
     uint32_t state = 0x12345678u;
     auto random01 = [&]() { state = state * 1664525u + 1013904223u; return (state >> 8) * (1.0f / 16777216.0f); };
     for (int i = 0; i < 2048; ++i)
@@ -513,6 +523,16 @@ void RenderingSystem::BuildScene()
         m_sceneBounds.push_back({ m_objects[i].bounds, i });
     m_octree = std::make_unique<Octree>(BoundingBox({ 0, 30, 40 }, { 150, 80, 170 }));
     m_octree->Build(m_sceneBounds);
+}
+
+const Mesh& RenderingSystem::MeshFor(const SceneObject& object) const
+{
+    switch (object.mesh)
+    {
+    case SceneMesh::Showcase: return m_objMesh;
+    case SceneMesh::Gato: return m_gatoMesh;
+    default: return m_cubeMesh;
+    }
 }
 
 void RenderingSystem::UpdateVisibility(const Camera& camera)
@@ -650,7 +670,7 @@ void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
         for (uint32_t objectIndex : m_shadowVisibleIndices[cascade])
         {
             const SceneObject& object = m_objects[objectIndex];
-            const Mesh& mesh = object.useObjMesh ? m_objMesh : m_cubeMesh;
+            const Mesh& mesh = MeshFor(object);
             mesh.Bind(m_commandList.Get());
             ShadowConstants constants{ object.world, m_shadowViewProjections[cascade] };
             m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
@@ -658,8 +678,6 @@ void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
                 m_commandList->DrawIndexedInstanced(submesh.indexCount, 1, submesh.firstIndex, 0, 0);
         }
 
-        // The displaced quad needs the same tessellation in the depth pass, otherwise
-        // its visible silhouette and the shadow caster would not match.
         m_commandList->SetGraphicsRootSignature(m_geometryRootSignature.Get());
         m_commandList->SetPipelineState(m_shadowTessellationPso.Get());
         m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
@@ -720,9 +738,10 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
         constants.world = object.world;
         XMStoreFloat4x4(&constants.viewProjection, viewProjection);
         constants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
-        constants.uvParameters = { 2.0f, 2.0f, 0.06f, 0.025f };
+        constants.uvParameters = object.uvParameters;
         constants.tessellationParameters = { 1, 1, 1, 1 };
-        const Mesh& mesh = object.useObjMesh ? m_objMesh : m_cubeMesh;
+        const Mesh& mesh = MeshFor(object);
+        m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(object.textureTableStart));
         mesh.Bind(m_commandList.Get());
         for (const Submesh& submesh : mesh.Submeshes())
         {
@@ -737,7 +756,6 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
         }
     }
 
-    // Dynamically tessellated, displacement-mapped centerpiece.
     m_commandList->SetPipelineState(m_tessellationPso.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
     m_tessellationMesh.Bind(m_commandList.Get());

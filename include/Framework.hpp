@@ -20,5 +20,6 @@ private:
     Camera m_camera;
     RenderingSystem m_renderer;
     float m_titleTimer = 0.0f;
+    float m_textureAnimationTime = 0.0f;
+    bool m_textureAnimationEnabled = false;
 };
-

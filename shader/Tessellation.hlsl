@@ -5,7 +5,7 @@ cbuffer ObjectConstants : register(b0)
     float4 gCameraAndTime;
     float4 gUvParameters;
     float4 gMaterialColor;
-    float4 gTessellationParameters; // max, min, near distance, far distance
+    float4 gTessellationParameters; 
 };
 
 Texture2D gAlbedo : register(t0);

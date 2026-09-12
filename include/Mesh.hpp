@@ -45,6 +45,7 @@ public:
     uint32_t IndexCount() const { return m_indexCount; }
     const std::vector<Submesh>& Submeshes() const { return m_submeshes; }
     const std::vector<MaterialDescription>& Materials() const { return m_materials; }
+    const DirectX::BoundingBox& Bounds() const { return m_bounds; }
 
 private:
     ComPtr<ID3D12Resource> m_vertexBuffer;
@@ -54,6 +55,7 @@ private:
     D3D12_VERTEX_BUFFER_VIEW m_vertexView{};
     D3D12_INDEX_BUFFER_VIEW m_indexView{};
     uint32_t m_indexCount = 0;
+    DirectX::BoundingBox m_bounds{};
     std::vector<Submesh> m_submeshes;
     std::vector<MaterialDescription> m_materials;
 };
