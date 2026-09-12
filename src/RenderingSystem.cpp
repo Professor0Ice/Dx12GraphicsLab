@@ -253,82 +253,7 @@ void RenderingSystem::CreateShadowResources()
     m_shadowScissor = { 0, 0, static_cast<LONG>(ShadowMapSize), static_cast<LONG>(ShadowMapSize) };
 }
 
-void RenderingSystem::CreateRootSignatures()
-{
-    D3D12_DESCRIPTOR_RANGE geometryRange{};
-    geometryRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    geometryRange.NumDescriptors = 3;
-    geometryRange.BaseShaderRegister = 0;
-    geometryRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    std::array<D3D12_ROOT_PARAMETER, 2> geometryParams{};
-    geometryParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    geometryParams[0].Descriptor.ShaderRegister = 0;
-    geometryParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    geometryParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    geometryParams[1].DescriptorTable.NumDescriptorRanges = 1;
-    geometryParams[1].DescriptorTable.pDescriptorRanges = &geometryRange;
-    geometryParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    auto sampler = AnisotropicSampler();
-    D3D12_ROOT_SIGNATURE_DESC geometryDesc{};
-    geometryDesc.NumParameters = static_cast<UINT>(geometryParams.size());
-    geometryDesc.pParameters = geometryParams.data();
-    geometryDesc.NumStaticSamplers = 1;
-    geometryDesc.pStaticSamplers = &sampler;
-    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-    ComPtr<ID3DBlob> signature, errors;
-    HRESULT hr = D3D12SerializeRootSignature(&geometryDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-                                             &signature, &errors);
-    if (FAILED(hr))
-        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-                                                IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
-
-    D3D12_DESCRIPTOR_RANGE lightingRange{};
-    lightingRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    lightingRange.NumDescriptors = GBuffer::TargetCount + 1;
-    lightingRange.BaseShaderRegister = 0;
-    lightingRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
-    lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    lightingParams[0].Descriptor.ShaderRegister = 0;
-    lightingParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    lightingParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    lightingParams[1].DescriptorTable.NumDescriptorRanges = 1;
-    lightingParams[1].DescriptorTable.pDescriptorRanges = &lightingRange;
-    lightingParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    D3D12_ROOT_SIGNATURE_DESC lightingDesc{};
-    lightingDesc.NumParameters = static_cast<UINT>(lightingParams.size());
-    lightingDesc.pParameters = lightingParams.data();
-    const std::array<D3D12_STATIC_SAMPLER_DESC, 2> lightingSamplers{
-        sampler, ShadowComparisonSampler()
-    };
-    lightingDesc.NumStaticSamplers = static_cast<UINT>(lightingSamplers.size());
-    lightingDesc.pStaticSamplers = lightingSamplers.data();
-    hr = D3D12SerializeRootSignature(&lightingDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
-    if (FAILED(hr))
-        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-                                                IID_PPV_ARGS(&m_lightingRootSignature)), "Create lighting root signature");
-
-    D3D12_ROOT_PARAMETER shadowParameter{};
-    shadowParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    shadowParameter.Descriptor.ShaderRegister = 0;
-    shadowParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-    D3D12_ROOT_SIGNATURE_DESC shadowDesc{};
-    shadowDesc.NumParameters = 1;
-    shadowDesc.pParameters = &shadowParameter;
-    shadowDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-                       D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-                       D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-                       D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-                       D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
-    hr = D3D12SerializeRootSignature(&shadowDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
-    if (FAILED(hr))
-        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-                                                IID_PPV_ARGS(&m_shadowRootSignature)), "Create shadow root signature");
-}
 
 ComPtr<ID3DBlob> RenderingSystem::CompileShader(const std::filesystem::path& file,
                                                 const char* entry, const char* target) const
@@ -457,6 +382,237 @@ void RenderingSystem::CreateConstantUpload()
     D3D12_RANGE readRange{ 0, 0 };
     ThrowIfFailed(m_constantUpload->Map(0, &readRange, reinterpret_cast<void**>(&m_constantMapped)),
                   "Map constant upload buffer");
+}
+
+void RenderingSystem::CreateRootSignatures()
+{
+    D3D12_DESCRIPTOR_RANGE geometryRange{};
+    geometryRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    geometryRange.NumDescriptors = 3;
+    geometryRange.BaseShaderRegister = 0;
+    geometryRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> geometryParams{};
+    geometryParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    geometryParams[0].Descriptor.ShaderRegister = 0;
+    geometryParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    geometryParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    geometryParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    geometryParams[1].DescriptorTable.pDescriptorRanges = &geometryRange;
+    geometryParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    auto sampler = AnisotropicSampler();
+    D3D12_ROOT_SIGNATURE_DESC geometryDesc{};
+    geometryDesc.NumParameters = static_cast<UINT>(geometryParams.size());
+    geometryDesc.pParameters = geometryParams.data();
+    geometryDesc.NumStaticSamplers = 1;
+    geometryDesc.pStaticSamplers = &sampler;
+    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    ComPtr<ID3DBlob> signature, errors;
+    HRESULT hr = D3D12SerializeRootSignature(&geometryDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+        &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
+
+    D3D12_DESCRIPTOR_RANGE lightingRange{};
+    lightingRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRange.NumDescriptors = GBuffer::TargetCount + 1;
+    lightingRange.BaseShaderRegister = 0;
+    lightingRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
+    lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    lightingParams[0].Descriptor.ShaderRegister = 0;
+    lightingParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    lightingParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    lightingParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    lightingParams[1].DescriptorTable.pDescriptorRanges = &lightingRange;
+    lightingParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    D3D12_ROOT_SIGNATURE_DESC lightingDesc{};
+    lightingDesc.NumParameters = static_cast<UINT>(lightingParams.size());
+    lightingDesc.pParameters = lightingParams.data();
+    const std::array<D3D12_STATIC_SAMPLER_DESC, 2> lightingSamplers{
+        sampler, ShadowComparisonSampler()
+    };
+    lightingDesc.NumStaticSamplers = static_cast<UINT>(lightingSamplers.size());
+    lightingDesc.pStaticSamplers = lightingSamplers.data();
+    hr = D3D12SerializeRootSignature(&lightingDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_lightingRootSignature)), "Create lighting root signature");
+
+    D3D12_ROOT_PARAMETER shadowParameter{};
+    shadowParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    shadowParameter.Descriptor.ShaderRegister = 0;
+    shadowParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_SIGNATURE_DESC shadowDesc{};
+    shadowDesc.NumParameters = 1;
+    shadowDesc.pParameters = &shadowParameter;
+    shadowDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    hr = D3D12SerializeRootSignature(&shadowDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_shadowRootSignature)), "Create shadow root signature");
+}
+
+void RenderingSystem::CreateRootSignatures()
+{
+    D3D12_DESCRIPTOR_RANGE geometryRange{};
+    geometryRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    geometryRange.NumDescriptors = 3;
+    geometryRange.BaseShaderRegister = 0;
+    geometryRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> geometryParams{};
+    geometryParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    geometryParams[0].Descriptor.ShaderRegister = 0;
+    geometryParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    geometryParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    geometryParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    geometryParams[1].DescriptorTable.pDescriptorRanges = &geometryRange;
+    geometryParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    auto sampler = AnisotropicSampler();
+    D3D12_ROOT_SIGNATURE_DESC geometryDesc{};
+    geometryDesc.NumParameters = static_cast<UINT>(geometryParams.size());
+    geometryDesc.pParameters = geometryParams.data();
+    geometryDesc.NumStaticSamplers = 1;
+    geometryDesc.pStaticSamplers = &sampler;
+    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    ComPtr<ID3DBlob> signature, errors;
+    HRESULT hr = D3D12SerializeRootSignature(&geometryDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+        &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
+
+    D3D12_DESCRIPTOR_RANGE lightingRange{};
+    lightingRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRange.NumDescriptors = GBuffer::TargetCount + 1;
+    lightingRange.BaseShaderRegister = 0;
+    lightingRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
+    lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    lightingParams[0].Descriptor.ShaderRegister = 0;
+    lightingParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    lightingParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    lightingParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    lightingParams[1].DescriptorTable.pDescriptorRanges = &lightingRange;
+    lightingParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    D3D12_ROOT_SIGNATURE_DESC lightingDesc{};
+    lightingDesc.NumParameters = static_cast<UINT>(lightingParams.size());
+    lightingDesc.pParameters = lightingParams.data();
+    const std::array<D3D12_STATIC_SAMPLER_DESC, 2> lightingSamplers{
+        sampler, ShadowComparisonSampler()
+    };
+    lightingDesc.NumStaticSamplers = static_cast<UINT>(lightingSamplers.size());
+    lightingDesc.pStaticSamplers = lightingSamplers.data();
+    hr = D3D12SerializeRootSignature(&lightingDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_lightingRootSignature)), "Create lighting root signature");
+
+    D3D12_ROOT_PARAMETER shadowParameter{};
+    shadowParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    shadowParameter.Descriptor.ShaderRegister = 0;
+    shadowParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_SIGNATURE_DESC shadowDesc{};
+    shadowDesc.NumParameters = 1;
+    shadowDesc.pParameters = &shadowParameter;
+    shadowDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    hr = D3D12SerializeRootSignature(&shadowDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_shadowRootSignature)), "Create shadow root signature");
+}
+
+void RenderingSystem::CreateRootSignatures()
+{
+    D3D12_DESCRIPTOR_RANGE geometryRange{};
+    geometryRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    geometryRange.NumDescriptors = 3;
+    geometryRange.BaseShaderRegister = 0;
+    geometryRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> geometryParams{};
+    geometryParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    geometryParams[0].Descriptor.ShaderRegister = 0;
+    geometryParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    geometryParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    geometryParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    geometryParams[1].DescriptorTable.pDescriptorRanges = &geometryRange;
+    geometryParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    auto sampler = AnisotropicSampler();
+    D3D12_ROOT_SIGNATURE_DESC geometryDesc{};
+    geometryDesc.NumParameters = static_cast<UINT>(geometryParams.size());
+    geometryDesc.pParameters = geometryParams.data();
+    geometryDesc.NumStaticSamplers = 1;
+    geometryDesc.pStaticSamplers = &sampler;
+    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    ComPtr<ID3DBlob> signature, errors;
+    HRESULT hr = D3D12SerializeRootSignature(&geometryDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+        &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
+
+    D3D12_DESCRIPTOR_RANGE lightingRange{};
+    lightingRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRange.NumDescriptors = GBuffer::TargetCount + 1;
+    lightingRange.BaseShaderRegister = 0;
+    lightingRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
+    lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    lightingParams[0].Descriptor.ShaderRegister = 0;
+    lightingParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    lightingParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    lightingParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    lightingParams[1].DescriptorTable.pDescriptorRanges = &lightingRange;
+    lightingParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    D3D12_ROOT_SIGNATURE_DESC lightingDesc{};
+    lightingDesc.NumParameters = static_cast<UINT>(lightingParams.size());
+    lightingDesc.pParameters = lightingParams.data();
+    const std::array<D3D12_STATIC_SAMPLER_DESC, 2> lightingSamplers{
+        sampler, ShadowComparisonSampler()
+    };
+    lightingDesc.NumStaticSamplers = static_cast<UINT>(lightingSamplers.size());
+    lightingDesc.pStaticSamplers = lightingSamplers.data();
+    hr = D3D12SerializeRootSignature(&lightingDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_lightingRootSignature)), "Create lighting root signature");
+
+    D3D12_ROOT_PARAMETER shadowParameter{};
+    shadowParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    shadowParameter.Descriptor.ShaderRegister = 0;
+    shadowParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_SIGNATURE_DESC shadowDesc{};
+    shadowDesc.NumParameters = 1;
+    shadowDesc.pParameters = &shadowParameter;
+    shadowDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    hr = D3D12SerializeRootSignature(&shadowDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_shadowRootSignature)), "Create shadow root signature");
 }
 
 void RenderingSystem::LoadAssets()
