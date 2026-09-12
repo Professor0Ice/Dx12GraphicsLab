@@ -83,7 +83,94 @@ namespace
     }
 }
 
+RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
+    : m_width(width), m_height(height), m_runtimeDirectory(ExecutableDirectory())
+{
+    m_viewport = { 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f };
+    m_scissor = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+    CreateDeviceAndSwapChain(window);
+    CreateDescriptors();
+    CreateRootSignatures();
+    CreatePipelineStates();
+    CreateConstantUpload();
+    LoadAssets();
+    BuildScene();
 
+    ThrowIfFailed(m_commandList->Close(), "Close initialization command list");
+    ID3D12CommandList* lists[]{ m_commandList.Get() };
+    m_commandQueue->ExecuteCommandLists(1, lists);
+    FlushGpu();
+}
+
+RenderingSystem::~RenderingSystem()
+{
+    if (m_commandQueue && m_fence)
+        FlushGpu();
+    if (m_constantUpload && m_constantMapped)
+        m_constantUpload->Unmap(0, nullptr);
+    if (m_fenceEvent)
+        CloseHandle(m_fenceEvent);
+}
+
+void RenderingSystem::CreateDeviceAndSwapChain(HWND window)
+{
+    UINT factoryFlags = 0;
+#if defined(_DEBUG)
+    ComPtr<ID3D12Debug> debug;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
+    {
+        debug->EnableDebugLayer();
+        factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+    }
+#endif
+    ThrowIfFailed(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&m_factory)), "Create DXGI factory");
+
+    ComPtr<IDXGIAdapter1> adapter;
+    for (UINT index = 0; m_factory->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                                                               IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND; ++index)
+    {
+        DXGI_ADAPTER_DESC1 description{};
+        adapter->GetDesc1(&description);
+        if (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) { adapter.Reset(); continue; }
+        if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+            break;
+        adapter.Reset();
+    }
+    if (!m_device)
+    {
+        ComPtr<IDXGIAdapter> warp;
+        ThrowIfFailed(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)), "Find WARP adapter");
+        ThrowIfFailed(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)),
+                      "Create D3D12 device");
+    }
+
+    D3D12_COMMAND_QUEUE_DESC queueDesc{};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)), "Create command queue");
+    for (auto& allocator : m_allocators)
+        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)),
+                      "Create command allocator");
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocators[0].Get(), nullptr,
+                                              IID_PPV_ARGS(&m_commandList)), "Create command list");
+
+    DXGI_SWAP_CHAIN_DESC1 swapDesc{};
+    swapDesc.Width = m_width;
+    swapDesc.Height = m_height;
+    swapDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    swapDesc.SampleDesc.Count = 1;
+    swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapDesc.BufferCount = FrameCount;
+    swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    ComPtr<IDXGISwapChain1> swapChain;
+    ThrowIfFailed(m_factory->CreateSwapChainForHwnd(m_commandQueue.Get(), window, &swapDesc, nullptr, nullptr,
+                                                    &swapChain), "Create swap chain");
+    ThrowIfFailed(swapChain.As(&m_swapChain), "Query swap chain 3");
+    m_factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
+
+    ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)), "Create fence");
+    m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!m_fenceEvent) throw std::runtime_error("CreateEventW failed");
+}
 
 void RenderingSystem::CreateDescriptors()
 {
