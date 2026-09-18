@@ -7,7 +7,7 @@ namespace
     struct ObjKey
     {
         int p = 0, t = 0, n = 0;
-        bool operator==(const ObjKey& other) const { return p == other.p && t == other.t && n == other.n; }
+        bool operator==(const ObjKey& other) const { return p == other.p and t == other.t and n == other.n; }
     };
 
     struct ObjKeyHash
@@ -30,9 +30,9 @@ namespace
         ObjKey result{};
         std::stringstream stream(token);
         std::string part;
-        if (std::getline(stream, part, '/') && !part.empty()) result.p = std::stoi(part);
-        if (std::getline(stream, part, '/') && !part.empty()) result.t = std::stoi(part);
-        if (std::getline(stream, part, '/') && !part.empty()) result.n = std::stoi(part);
+        if (std::getline(stream, part, '/') and not part.empty()) result.p = std::stoi(part);
+        if (std::getline(stream, part, '/') and not part.empty()) result.t = std::stoi(part);
+        if (std::getline(stream, part, '/') and not part.empty()) result.n = std::stoi(part);
         return result;
     }
 
@@ -75,7 +75,7 @@ namespace
     {
         std::vector<MaterialDescription> materials;
         std::ifstream file(path);
-        if (!file) return materials;
+        if (not file) return materials;
         MaterialDescription* current = nullptr;
         std::string line;
         while (std::getline(file, line))
@@ -89,19 +89,19 @@ namespace
                 current = &materials.back();
                 stream >> current->name;
             }
-            else if (current && command == "Kd")
+            else if (current and command == "Kd")
             {
                 stream >> current->diffuse.x >> current->diffuse.y >> current->diffuse.z;
             }
-            else if (current && command == "map_Kd")
+            else if (current and command == "map_Kd")
             {
                 std::string value; stream >> value; current->albedoTexture = path.parent_path() / value;
             }
-            else if (current && (command == "map_Bump" || command == "bump"))
+            else if (current and (command == "map_Bump" or command == "bump"))
             {
                 std::string value; stream >> value; current->normalTexture = path.parent_path() / value;
             }
-            else if (current && command == "disp")
+            else if (current and command == "disp")
             {
                 std::string value; stream >> value; current->displacementTexture = path.parent_path() / value;
             }
@@ -151,7 +151,7 @@ MeshData Mesh::TessellatedQuadData()
 MeshData Mesh::LoadObj(const std::filesystem::path& path)
 {
     std::ifstream file(path);
-    if (!file)
+    if (not file)
         throw std::runtime_error("Cannot open OBJ: " + path.string());
 
     MeshData data;
@@ -166,7 +166,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
     std::string line;
     while (std::getline(file, line))
     {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() or line[0] == '#') continue;
         std::stringstream stream(line);
         std::string command;
         stream >> command;
@@ -186,7 +186,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
         {
             std::string name; stream >> name;
             auto loaded = LoadMaterials(path.parent_path() / name);
-            if (!loaded.empty())
+            if (not loaded.empty())
             {
                 data.materials = std::move(loaded);
                 materialIndices.clear();
@@ -212,7 +212,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
             {
                 ObjKey key = ParseFaceIndex(token);
                 const auto found = vertexCache.find(key);
-                if (found != vertexCache.end())
+                if (found not_eq vertexCache.end())
                 {
                     polygon.push_back(found->second);
                     continue;
@@ -236,7 +236,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
     }
     data.submeshes.erase(std::remove_if(data.submeshes.begin(), data.submeshes.end(),
         [](const Submesh& mesh) { return mesh.indexCount == 0; }), data.submeshes.end());
-    if (data.vertices.empty() || data.indices.empty())
+    if (data.vertices.empty() or data.indices.empty())
         throw std::runtime_error("OBJ contains no geometry: " + path.string());
     CalculateTangents(data);
     return data;
@@ -244,13 +244,15 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
 
 void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, const MeshData& data)
 {
+
     const UINT64 vertexSize = data.vertices.size() * sizeof(Vertex);
     const UINT64 indexSize = data.indices.size() * sizeof(uint32_t);
-    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT); // Основные буферы читает GPU
+    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD); // Промежуточные буферы заполняет CPU
     auto vertexDesc = BufferDescription(vertexSize);
     auto indexDesc = BufferDescription(indexSize);
 
+    // COPY_DEST означает, что первой операцией над default-буфером будет копирование.
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc,
         D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_vertexBuffer)), "Create vertex buffer");
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc,
@@ -261,7 +263,7 @@ void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, 
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_indexUpload)), "Create index upload");
 
     void* mapped = nullptr;
-    D3D12_RANGE readRange{ 0, 0 };
+    D3D12_RANGE readRange{ 0, 0 }; 
     ThrowIfFailed(m_vertexUpload->Map(0, &readRange, &mapped), "Map vertex upload");
     memcpy(mapped, data.vertices.data(), static_cast<size_t>(vertexSize));
     m_vertexUpload->Unmap(0, nullptr);

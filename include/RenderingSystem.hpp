@@ -33,11 +33,11 @@ public:
     size_t TotalObjectCount() const { return m_objects.size(); }
 
 private:
-    static constexpr UINT FrameCount = 2;
-    static constexpr UINT MaxLights = 16;
+    static constexpr UINT FrameCount = 2; // Два back buffer чтобы CPU и GPU синхранизация
+    static constexpr UINT MaxLights = 16; // Должен совпадать с gLights в Lighting.hlsl
     static constexpr UINT CascadeCount = 4;
     static constexpr UINT ShadowMapSize = 2048;
-    static constexpr UINT64 ConstantsPerFrame = 4 * 1024 * 1024;
+    static constexpr UINT64 ConstantsPerFrame = 4 * 1024 * 1024; // Отдельный участок upload-буфера на кадр.
 
     enum class SceneMesh
     {
@@ -48,14 +48,16 @@ private:
 
     struct SceneObject
     {
-        DirectX::XMFLOAT4X4 world{};
-        DirectX::BoundingBox bounds{};
-        DirectX::XMFLOAT4 color{ 1, 1, 1, 1 };
-        DirectX::XMFLOAT4 uvParameters{ 2.0f, 2.0f, 0.06f, 0.025f };
+        DirectX::XMFLOAT4X4 world{}; // Переводит вершины модели в мировое пространство.
+        DirectX::BoundingBox bounds{}; // Границы объекта для отсечения невидимых объектов.
+        DirectX::XMFLOAT4 color{ 1, 1, 1, 1 }; // Множитель цвета материала RGBA.
+        DirectX::XMFLOAT4 uvParameters{ 2.0f, 2.0f, 0.06f, 0.025f }; // Масштаб 
         SceneMesh mesh = SceneMesh::Cube;
-        UINT textureTableStart = 4;
+        UINT textureTableStart = 4; // Первый SRV текстур объекта в общей таблице дескрипторов.
     };
 
+    // Данные одного объекта в точности повторяют cbuffer ObjectConstants в HLSL.
+    // Выравнивание 16 нужно для корректной раскладки float4 и матриц на стороне GPU.
     struct alignas(16) ObjectConstants
     {
         DirectX::XMFLOAT4X4 world;
@@ -66,6 +68,7 @@ private:
         DirectX::XMFLOAT4 tessellationParameters;
     };
 
+    // Представление одного света для GPU. Компонента w хранит дальность, тип или интенсивность.
     struct alignas(16) LightGpu
     {
         DirectX::XMFLOAT4 positionAndRange;
@@ -75,6 +78,7 @@ private:
         DirectX::XMFLOAT4 padding;
     };
 
+    // Общие данные отложенного освещения, загружаемые один раз на кадр.
     struct alignas(16) LightingConstants
     {
         DirectX::XMFLOAT4X4 inverseViewProjection;
@@ -87,6 +91,7 @@ private:
         std::array<LightGpu, MaxLights> lights;
     };
 
+    // Минимальный набор матриц для прохода, записывающего глубину от лица солнца.
     struct alignas(16) ShadowConstants
     {
         DirectX::XMFLOAT4X4 world;
@@ -117,44 +122,44 @@ private:
     UINT m_width = 0;
     UINT m_height = 0;
     std::filesystem::path m_runtimeDirectory;
-    D3D12_VIEWPORT m_viewport{};
-    D3D12_RECT m_scissor{};
+    D3D12_VIEWPORT m_viewport{}; // Преобразует координаты после шейдера в пиксели окна.
+    D3D12_RECT m_scissor{}; // Запрещает растеризацию вне клиентской области окна.
 
-    ComPtr<IDXGIFactory6> m_factory;
-    ComPtr<ID3D12Device> m_device;
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
-    ComPtr<IDXGISwapChain3> m_swapChain;
-    std::array<ComPtr<ID3D12CommandAllocator>, FrameCount> m_allocators;
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ComPtr<IDXGIFactory6> m_factory; // DXGI перечисляет адаптеры и создаёт swap chain.
+    ComPtr<ID3D12Device> m_device; // Главный объект Direct3D 12 для создания GPU-ресурсов.
+    ComPtr<ID3D12CommandQueue> m_commandQueue; // Очередь выполнения команд на GPU.
+    ComPtr<IDXGISwapChain3> m_swapChain; // Набор кадров, по очереди показываемых в окне.
+    std::array<ComPtr<ID3D12CommandAllocator>, FrameCount> m_allocators; // Память команд отдельно для каждого кадра.
+    ComPtr<ID3D12GraphicsCommandList> m_commandList; // Список команд текущего кадра.
     ComPtr<ID3D12DescriptorHeap> m_swapChainRtvHeap;
     ComPtr<ID3D12DescriptorHeap> m_srvHeap;
     std::array<ComPtr<ID3D12Resource>, FrameCount> m_backBuffers;
     UINT m_rtvIncrement = 0;
     UINT m_srvIncrement = 0;
 
-    ComPtr<ID3D12RootSignature> m_geometryRootSignature;
-    ComPtr<ID3D12RootSignature> m_lightingRootSignature;
-    ComPtr<ID3D12RootSignature> m_shadowRootSignature;
+    ComPtr<ID3D12RootSignature> m_geometryRootSignature; // Связи констант и текстур геометрического прохода.
+    ComPtr<ID3D12RootSignature> m_lightingRootSignature; // Связи G-buffer, теней и света.
+    ComPtr<ID3D12RootSignature> m_shadowRootSignature; // Только матрицы объекта и солнца для теней.
     ComPtr<ID3D12PipelineState> m_geometryPso;
     ComPtr<ID3D12PipelineState> m_tessellationPso;
     ComPtr<ID3D12PipelineState> m_lightingPso;
     ComPtr<ID3D12PipelineState> m_shadowPso;
     ComPtr<ID3D12PipelineState> m_shadowTessellationPso;
 
-    ComPtr<ID3D12Resource> m_shadowMap;
-    ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap;
+    ComPtr<ID3D12Resource> m_shadowMap; // Массив из четырёх depth-текстур солнечной тени.
+    ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap; // По DSV на каждый каскад для записи глубины.
     D3D12_VIEWPORT m_shadowViewport{};
     D3D12_RECT m_shadowScissor{};
     std::array<DirectX::XMFLOAT4X4, CascadeCount> m_shadowViewProjections{};
     std::array<std::vector<uint32_t>, CascadeCount> m_shadowVisibleIndices;
     DirectX::XMFLOAT4 m_cascadeSplits{};
 
-    ComPtr<ID3D12Resource> m_constantUpload;
-    uint8_t* m_constantMapped = nullptr;
-    UINT64 m_constantOffset = 0;
+    ComPtr<ID3D12Resource> m_constantUpload; // Постоянно отображённая CPU-память с константами кадров.
+    uint8_t* m_constantMapped = nullptr; // CPU-адрес начала этой памяти.
+    UINT64 m_constantOffset = 0; // Следующий свободный адрес с учётом выравнивания CBV.
     UINT m_frameIndex = 0;
 
-    ComPtr<ID3D12Fence> m_fence;
+    ComPtr<ID3D12Fence> m_fence; // Счётчик синхронизации: не даёт CPU перезаписать используемый кадр.
     HANDLE m_fenceEvent = nullptr;
     UINT64 m_nextFenceValue = 0;
     std::array<UINT64, FrameCount> m_frameFenceValues{};

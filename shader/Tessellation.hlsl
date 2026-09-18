@@ -1,3 +1,4 @@
+
 cbuffer ObjectConstants : register(b0)
 {
     row_major float4x4 gWorld;
@@ -35,11 +36,13 @@ struct PatchConstants
 PatchConstants PatchConstantFunction(InputPatch<ControlPoint, 4> patch, uint patchId : SV_PrimitiveID)
 {
     PatchConstants output;
+    // Оцениваем расстояние от центра patch до камеры в мировом пространстве.
     float3 center = (patch[0].position + patch[1].position + patch[2].position + patch[3].position) * 0.25f;
     float3 worldCenter = mul(float4(center, 1.0f), gWorld).xyz;
     float distanceToCamera = distance(worldCenter, gCameraAndTime.xyz);
     float range = max(gTessellationParameters.w - gTessellationParameters.z, 0.001f);
     float alpha = saturate((distanceToCamera - gTessellationParameters.z) / range);
+    
     float factor = lerp(gTessellationParameters.x, gTessellationParameters.y, alpha);
     [unroll] for (int i = 0; i < 4; ++i) output.edges[i] = factor;
     output.inside[0] = factor;
@@ -52,8 +55,7 @@ PatchConstants PatchConstantFunction(InputPatch<ControlPoint, 4> patch, uint pat
 [outputtopology("triangle_cw")]
 [outputcontrolpoints(4)]
 [patchconstantfunc("PatchConstantFunction")]
-ControlPoint HSMain(InputPatch<ControlPoint, 4> patch, uint pointId : SV_OutputControlPointID,
-                    uint patchId : SV_PrimitiveID)
+ControlPoint HSMain(InputPatch<ControlPoint, 4> patch, uint pointId : SV_OutputControlPointID, uint patchId : SV_PrimitiveID)
 {
     return patch[pointId];
 }
@@ -83,17 +85,16 @@ ControlPoint InterpolateQuad(const OutputPatch<ControlPoint, 4> patch, float2 uv
 }
 
 [domain("quad")]
-DomainOutput DSMain(PatchConstants constants, float2 domain : SV_DomainLocation,
-                    const OutputPatch<ControlPoint, 4> patch)
+DomainOutput DSMain(PatchConstants constants, float2 domain : SV_DomainLocation, const OutputPatch<ControlPoint, 4> patch)
 {
     ControlPoint control = InterpolateQuad(patch, domain);
     float2 animatedUv = control.uv * gUvParameters.xy + gCameraAndTime.w * gUvParameters.zw;
     float displacement = (gDisplacement.SampleLevel(gSampler, animatedUv, 0).r - 0.5f) * 1.25f;
-    control.position += control.normal * displacement;
+    control.position += control.normal * displacement; // Карта высот меняет настоящую геометрию.
 
     DomainOutput output;
     float4 worldPosition = mul(float4(control.position, 1), gWorld);
-    output.position = mul(worldPosition, gViewProjection);
+    output.position = mul(worldPosition, gViewProjection); // Итоговая clip-space позиция.
     output.worldPosition = worldPosition.xyz;
     output.normal = normalize(mul(float4(control.normal, 0), gWorld).xyz);
     output.tangent = normalize(mul(float4(control.tangent.xyz, 0), gWorld).xyz);
@@ -111,13 +112,14 @@ struct GBufferOutput
 GBufferOutput PSMain(DomainOutput input)
 {
     GBufferOutput output;
+    // Из normal и tangent строится TBN-базис для перевода normal map в мир.
     float3 n = normalize(input.normal);
     float3 t = normalize(input.tangent - n * dot(input.tangent, n));
     float3 b = normalize(cross(n, t));
     float3 mapNormal = gNormalMap.Sample(gSampler, input.uv).xyz * 2.0f - 1.0f;
     float3 worldNormal = normalize(mapNormal.x * t + mapNormal.y * b + mapNormal.z * n);
-    output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor;
-    output.normal = float4(worldNormal, 48.0f);
-    output.position = float4(input.worldPosition, 0.55f);
+    output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor; // Цвет.
+    output.normal = float4(worldNormal, 48.0f); // Нормаль и более резкий specular.
+    output.position = float4(input.worldPosition, 0.55f); // Позиция и сила specular.
     return output;
 }

@@ -3,11 +3,11 @@
 InputDevice::InputDevice(HWND window) : m_window(window)
 {
     RAWINPUTDEVICE device{};
-    device.usUsagePage = 0x01;
-    device.usUsage = 0x02;
-    device.dwFlags = RIDEV_INPUTSINK;
-    device.hwndTarget = window;
-    if (!RegisterRawInputDevices(&device, 1, sizeof(device)))
+    device.usUsagePage = 0x01; // Generic Desktop Controls.
+    device.usUsage = 0x02; // Устройство типа «мышь».
+    device.dwFlags = RIDEV_INPUTSINK; // Получать WM_INPUT, пока окно является целью ввода.
+    device.hwndTarget = window; // Окно-получатель сообщений.
+    if (not RegisterRawInputDevices(&device, 1, sizeof(device)))
         throw std::runtime_error("RegisterRawInputDevices failed");
     SetMouseCaptured(true);
 }
@@ -100,4 +100,3 @@ void InputDevice::EndFrame()
 {
     m_previousKeys = m_keys;
 }
-

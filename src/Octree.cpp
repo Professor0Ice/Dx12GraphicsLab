@@ -26,7 +26,7 @@ int Octree::ContainingChild(const Node& node, const BoundingBox& box) const
     const int x = maxPoint.x <= center.x ? 0 : (minPoint.x >= center.x ? 1 : -1);
     const int y = maxPoint.y <= center.y ? 0 : (minPoint.y >= center.y ? 1 : -1);
     const int z = maxPoint.z <= center.z ? 0 : (minPoint.z >= center.z ? 1 : -1);
-    return (x < 0 || y < 0 || z < 0) ? -1 : x | (y << 1) | (z << 2);
+    return (x < 0 or y < 0 or z < 0) ? -1 : x | (y << 1) | (z << 2);
 }
 
 void Octree::Subdivide(Node& node)
@@ -50,7 +50,7 @@ void Octree::Subdivide(Node& node)
 
 void Octree::Insert(Node& node, uint32_t boundsIndex, uint32_t depth)
 {
-    if (!node.IsLeaf())
+    if (not node.IsLeaf())
     {
         const int child = ContainingChild(node, m_objects[boundsIndex].box);
         if (child >= 0)
@@ -61,7 +61,7 @@ void Octree::Insert(Node& node, uint32_t boundsIndex, uint32_t depth)
     }
 
     node.items.push_back(boundsIndex);
-    if (node.IsLeaf() && node.items.size() > m_capacity && depth < m_maxDepth)
+    if (node.IsLeaf() and node.items.size() > m_capacity and depth < m_maxDepth)
     {
         Subdivide(node);
         std::vector<uint32_t> retained;
@@ -83,21 +83,20 @@ void Octree::Query(const BoundingFrustum& frustum, std::vector<uint32_t>& visibl
     QueryNode(*m_root, frustum, visible);
 }
 
-void Octree::QueryNode(const Node& node, const BoundingFrustum& frustum,
-                       std::vector<uint32_t>& visible) const
+void Octree::QueryNode(const Node& node, const BoundingFrustum& frustum,std::vector<uint32_t>& visible) const
 {
     if (frustum.Contains(node.bounds) == DISJOINT)
         return;
 
     for (uint32_t item : node.items)
     {
-        if (frustum.Contains(m_objects[item].box) != DISJOINT)
+        // Объект добавляется, если его bounding box хотя бы частично попадает во frustum.
+        if (frustum.Contains(m_objects[item].box) not_eq DISJOINT)
             visible.push_back(m_objects[item].objectIndex);
     }
-    if (!node.IsLeaf())
+    if (not node.IsLeaf())
     {
         for (const auto& child : node.children)
             QueryNode(*child, frustum, visible);
     }
 }
-

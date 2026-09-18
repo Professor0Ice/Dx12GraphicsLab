@@ -2,7 +2,7 @@
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
-    const bool smokeTest = wcsstr(GetCommandLineW(), L"--smoke-test") != nullptr;
+    const bool smokeTest = wcsstr(GetCommandLineW(), L"--smoke-test") not_eq nullptr;
     try
     {
         if (smokeTest)

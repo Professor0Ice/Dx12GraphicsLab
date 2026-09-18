@@ -9,7 +9,6 @@ public:
     ID3D12Resource* Resource() const { return m_resource.Get(); }
 
 private:
-    ComPtr<ID3D12Resource> m_resource;
-    ComPtr<ID3D12Resource> m_upload;
+    ComPtr<ID3D12Resource> m_resource; // Конечная техтура для видюхи
+    ComPtr<ID3D12Resource> m_upload; // Промежуточный буфер для процессора
 };
-

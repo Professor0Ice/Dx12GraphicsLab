@@ -3,10 +3,10 @@
 
 struct Vertex
 {
-    DirectX::XMFLOAT3 position;
-    DirectX::XMFLOAT3 normal;
-    DirectX::XMFLOAT4 tangent;
-    DirectX::XMFLOAT2 uv;
+    DirectX::XMFLOAT3 position; // Локальная позиция вершины.
+    DirectX::XMFLOAT3 normal; // Направление поверхности для света.
+    DirectX::XMFLOAT4 tangent; // Ось tangent space для normal map.
+    DirectX::XMFLOAT2 uv; // Координаты выборки текстуры.
 };
 
 struct MaterialDescription
@@ -48,12 +48,12 @@ public:
     const DirectX::BoundingBox& Bounds() const { return m_bounds; }
 
 private:
-    ComPtr<ID3D12Resource> m_vertexBuffer;
-    ComPtr<ID3D12Resource> m_indexBuffer;
-    ComPtr<ID3D12Resource> m_vertexUpload;
-    ComPtr<ID3D12Resource> m_indexUpload;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexView{};
-    D3D12_INDEX_BUFFER_VIEW m_indexView{};
+    ComPtr<ID3D12Resource> m_vertexBuffer; // Вершины
+    ComPtr<ID3D12Resource> m_indexBuffer; // Индексы
+    ComPtr<ID3D12Resource> m_vertexUpload; // Временная CPU-доступная память загрузки вершин.
+    ComPtr<ID3D12Resource> m_indexUpload; // Временная CPU-доступная память загрузки индексов.
+    D3D12_VERTEX_BUFFER_VIEW m_vertexView{}; // Адрес, размер и шаг одной вершины
+    D3D12_INDEX_BUFFER_VIEW m_indexView{}; // Адрес, размер и формат индексов
     uint32_t m_indexCount = 0;
     DirectX::BoundingBox m_bounds{};
     std::vector<Submesh> m_submeshes;

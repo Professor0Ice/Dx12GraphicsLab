@@ -23,4 +23,3 @@ void Timer::Tick()
     m_totalSeconds += m_deltaSeconds;
     m_previous = current;
 }
-
