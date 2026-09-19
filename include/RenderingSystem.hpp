@@ -38,6 +38,8 @@ private:
     static constexpr UINT CascadeCount = 4;
     static constexpr UINT ShadowMapSize = 2048;
     static constexpr UINT64 ConstantsPerFrame = 4 * 1024 * 1024; // Отдельный участок upload-буфера на кадр.
+    static constexpr UINT CachedVertexStride = 11 * sizeof(float);
+    static constexpr UINT64 CachedVertexBufferBytes = 6ull * 64 * 64 * CachedVertexStride;
 
     enum class SceneMesh
     {
@@ -104,13 +106,16 @@ private:
     void CreatePipelineStates();
     void CreateShadowResources();
     void CreateConstantUpload();
+    void CreateTessellationCache();
     void LoadAssets();
     void BuildScene();
     const Mesh& MeshFor(const SceneObject& object) const;
     void UpdateVisibility(const Camera& camera);
     void UpdateShadowCascades(const Camera& camera);
     void RenderShadowMaps(const Camera& camera, float totalTime);
-    void PopulateCommandList(const Camera& camera, float totalTime);
+    void PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation);
+    void UpdateTessellationCache(const Camera& camera, float totalTime);
+    void DrawCachedTessellation(const ObjectConstants& constants);
     D3D12_GPU_VIRTUAL_ADDRESS UploadConstants(const void* data, size_t size);
     ComPtr<ID3DBlob> CompileShader(const std::filesystem::path& file,
                                   const char* entry, const char* target) const;
@@ -141,25 +146,37 @@ private:
     ComPtr<ID3D12RootSignature> m_lightingRootSignature; // Связи G-buffer, теней и света.
     ComPtr<ID3D12RootSignature> m_shadowRootSignature; // Только матрицы объекта и солнца для теней.
     ComPtr<ID3D12PipelineState> m_geometryPso;
-    ComPtr<ID3D12PipelineState> m_tessellationPso;
     ComPtr<ID3D12PipelineState> m_lightingPso;
     ComPtr<ID3D12PipelineState> m_shadowPso;
-    ComPtr<ID3D12PipelineState> m_shadowTessellationPso;
+    ComPtr<ID3D12PipelineState> m_tessCapturePso;
+    ComPtr<ID3D12PipelineState> m_cachedTessellationPso;
+    ComPtr<ID3D12PipelineState> m_cachedShadowPso;
+    ComPtr<ID3D12PipelineState> m_tessDrawArgsPso;
+    ComPtr<ID3D12RootSignature> m_tessDrawArgsRootSignature;
+    ComPtr<ID3D12CommandSignature> m_tessDrawCommandSignature;
 
-    ComPtr<ID3D12Resource> m_shadowMap; // Массив из четырёх depth-текстур солнечной тени.
-    ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap; // По DSV на каждый каскад для записи глубины.
+    ComPtr<ID3D12Resource> m_shadowMap; 
+    ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap;//на каждый каскад для записи глубины
     D3D12_VIEWPORT m_shadowViewport{};
     D3D12_RECT m_shadowScissor{};
     std::array<DirectX::XMFLOAT4X4, CascadeCount> m_shadowViewProjections{};
     std::array<std::vector<uint32_t>, CascadeCount> m_shadowVisibleIndices;
     DirectX::XMFLOAT4 m_cascadeSplits{};
 
-    ComPtr<ID3D12Resource> m_constantUpload; // Постоянно отображённая CPU-память с константами кадров.
-    uint8_t* m_constantMapped = nullptr; // CPU-адрес начала этой памяти.
-    UINT64 m_constantOffset = 0; // Следующий свободный адрес с учётом выравнивания CBV.
+    ComPtr<ID3D12Resource> m_constantUpload; 
+    uint8_t* m_constantMapped = nullptr;
+    UINT64 m_constantOffset = 0; 
     UINT m_frameIndex = 0;
 
-    ComPtr<ID3D12Fence> m_fence; // Счётчик синхронизации: не даёт CPU перезаписать используемый кадр.
+    DirectX::XMFLOAT3 m_cachedTessCameraPosition{};
+    bool m_tessCacheValid = false;
+    ComPtr<ID3D12Resource> m_cachedTessVertices;
+    ComPtr<ID3D12Resource> m_cachedTessFilledSize;
+    ComPtr<ID3D12Resource> m_tessFilledSizeReset;
+    ComPtr<ID3D12Resource> m_cachedTessDrawArgs;
+    D3D12_VERTEX_BUFFER_VIEW m_cachedTessVertexView{};
+
+    ComPtr<ID3D12Fence> m_fence; 
     HANDLE m_fenceEvent = nullptr;
     UINT64 m_nextFenceValue = 0;
     std::array<UINT64, FrameCount> m_frameFenceValues{};

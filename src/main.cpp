@@ -11,6 +11,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             Camera camera(640.0f / 360.0f);
             RenderingSystem renderer(hiddenWindow.Handle(), 640, 360);
             renderer.Render(camera, 0.0f);
+            renderer.Render(camera, 0.0f); // Повторное использование сетки при неподвижной камере.
+            renderer.Render(camera, 1.0f); // При неизменной камере геометрия берётся из кеша.
             return EXIT_SUCCESS;
         }
         Framework application(instance);

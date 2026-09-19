@@ -79,3 +79,16 @@ float4 DSMain(PatchConstants constants, float2 domain : SV_DomainLocation,
     float4 worldPosition = mul(float4(position, 1.0f), gWorld);
     return mul(worldPosition, gLightViewProjection);
 }
+
+struct CachedInput
+{
+    float3 worldPosition : POSITION;
+    float3 normal : NORMAL;
+    float3 tangent : TANGENT;
+    float2 uv : TEXCOORD;
+};
+
+float4 CachedVS(CachedInput input) : SV_POSITION
+{
+    return mul(float4(input.worldPosition, 1.0f), gLightViewProjection);
+}

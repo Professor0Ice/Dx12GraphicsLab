@@ -119,6 +119,7 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <None Include="shader\Shadow.hlsl" />
     <None Include="shader\ShadowTessellation.hlsl" />
     <None Include="shader\Tessellation.hlsl" />
+    <None Include="shader\TessellationDrawArgs.hlsl" />
     <None Include="assets\showcase.obj" />
     <None Include="assets\showcase.mtl" />
     <None Include="assets\Gato.obj" />

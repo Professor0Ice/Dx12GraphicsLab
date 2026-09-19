@@ -100,6 +100,7 @@ RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
     CreateRootSignatures();
     CreatePipelineStates();
     CreateConstantUpload();
+    CreateTessellationCache();
     LoadAssets();
     BuildScene();
 
@@ -148,18 +149,15 @@ void RenderingSystem::CreateDeviceAndSwapChain(HWND window)
     {
         ComPtr<IDXGIAdapter> warp;
         ThrowIfFailed(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)), "Find WARP adapter");
-        ThrowIfFailed(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)),
-                      "Create D3D12 device");
+        ThrowIfFailed(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)),"Create D3D12 device");
     }
 
     D3D12_COMMAND_QUEUE_DESC queueDesc{};
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)), "Create command queue");
     for (auto& allocator : m_allocators)
-        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)),
-                      "Create command allocator");
-    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocators[0].Get(), nullptr,
-                                              IID_PPV_ARGS(&m_commandList)), "Create command list");
+        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)),"Create command allocator");
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocators[0].Get(), nullptr,IID_PPV_ARGS(&m_commandList)), "Create command list");
 
     DXGI_SWAP_CHAIN_DESC1 swapDesc{};
     swapDesc.Width = m_width;
@@ -278,7 +276,8 @@ void RenderingSystem::CreateRootSignatures()
     geometryDesc.pParameters = geometryParams.data();
     geometryDesc.NumStaticSamplers = 1;
     geometryDesc.pStaticSamplers = &sampler;
-    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    geometryDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+                         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT;
 
     ComPtr<ID3DBlob> signature, errors;
     HRESULT hr = D3D12SerializeRootSignature(&geometryDesc, D3D_ROOT_SIGNATURE_VERSION_1,&signature, &errors);
@@ -362,16 +361,22 @@ void RenderingSystem::CreatePipelineStates()
     const auto tessHs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "HSMain", "hs_5_1");
     const auto tessDs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "DSMain", "ds_5_1");
     const auto tessPs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "PSMain", "ps_5_1");
+    const auto tessCacheGs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "GSCache", "gs_5_1");
+    const auto cachedTessVs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "CachedVS", "vs_5_1");
     const auto shadowVs = CompileShader(m_runtimeDirectory / L"shader/Shadow.hlsl", "VSMain", "vs_5_1");
-    const auto shadowTessVs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "VSMain", "vs_5_1");
-    const auto shadowTessHs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "HSMain", "hs_5_1");
-    const auto shadowTessDs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "DSMain", "ds_5_1");
+    const auto cachedShadowVs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "CachedVS", "vs_5_1");
 
     const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal),   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, tangent), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(Vertex, uv), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+    };
+    const D3D12_INPUT_ELEMENT_DESC cachedLayout[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC geometry{};
@@ -397,8 +402,33 @@ void RenderingSystem::CreatePipelineStates()
     tessellation.PS = { tessPs->GetBufferPointer(), tessPs->GetBufferSize() };
     tessellation.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
     tessellation.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; 
-    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&tessellation, IID_PPV_ARGS(&m_tessellationPso)),
-                  "Create tessellation PSO");
+    const D3D12_SO_DECLARATION_ENTRY streamLayout[] = {
+        { 0, "POSITION", 0, 0, 3, 0 },
+        { 0, "NORMAL",   0, 0, 3, 0 },
+        { 0, "TANGENT",  0, 0, 3, 0 },
+        { 0, "TEXCOORD", 0, 0, 2, 0 }
+    };
+    const UINT streamStride = CachedVertexStride;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC capture = tessellation;
+    capture.GS = { tessCacheGs->GetBufferPointer(), tessCacheGs->GetBufferSize() };
+    capture.PS = {};
+    capture.NumRenderTargets = 0;
+    for (auto& format : capture.RTVFormats) format = DXGI_FORMAT_UNKNOWN;
+    capture.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    capture.DepthStencilState.DepthEnable = FALSE;
+    capture.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    capture.StreamOutput = { streamLayout, static_cast<UINT>(std::size(streamLayout)),
+                             &streamStride, 1, D3D12_SO_NO_RASTERIZED_STREAM };
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&capture, IID_PPV_ARGS(&m_tessCapturePso)),
+                  "Create tessellation stream output PSO");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC cachedTessellation = geometry;
+    cachedTessellation.VS = { cachedTessVs->GetBufferPointer(), cachedTessVs->GetBufferSize() };
+    cachedTessellation.PS = { tessPs->GetBufferPointer(), tessPs->GetBufferSize() };
+    cachedTessellation.InputLayout = { cachedLayout, static_cast<UINT>(std::size(cachedLayout)) };
+    cachedTessellation.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&cachedTessellation,
+        IID_PPV_ARGS(&m_cachedTessellationPso)), "Create cached tessellation PSO");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC lighting{};
     lighting.pRootSignature = m_lightingRootSignature.Get();
@@ -435,14 +465,13 @@ void RenderingSystem::CreatePipelineStates()
     shadow.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&shadow, IID_PPV_ARGS(&m_shadowPso)),"Create shadow PSO");
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowTessellation = shadow;
-    shadowTessellation.pRootSignature = m_geometryRootSignature.Get();
-    shadowTessellation.VS = { shadowTessVs->GetBufferPointer(), shadowTessVs->GetBufferSize() };
-    shadowTessellation.HS = { shadowTessHs->GetBufferPointer(), shadowTessHs->GetBufferSize() };
-    shadowTessellation.DS = { shadowTessDs->GetBufferPointer(), shadowTessDs->GetBufferSize() };
-    shadowTessellation.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
-    shadowTessellation.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&shadowTessellation,IID_PPV_ARGS(&m_shadowTessellationPso)), "Create tessellated shadow PSO");
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC cachedShadow = shadow;
+    cachedShadow.pRootSignature = m_geometryRootSignature.Get();
+    cachedShadow.VS = { cachedShadowVs->GetBufferPointer(), cachedShadowVs->GetBufferSize() };
+    cachedShadow.InputLayout = { cachedLayout, static_cast<UINT>(std::size(cachedLayout)) };
+    cachedShadow.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&cachedShadow,
+        IID_PPV_ARGS(&m_cachedShadowPso)), "Create cached tessellation shadow PSO");
 }
 
 void RenderingSystem::CreateConstantUpload()
@@ -454,6 +483,67 @@ void RenderingSystem::CreateConstantUpload()
     D3D12_RANGE readRange{ 0, 0 }; 
     ThrowIfFailed(m_constantUpload->Map(0, &readRange, reinterpret_cast<void**>(&m_constantMapped)),
                   "Map constant upload buffer");
+}
+
+void RenderingSystem::CreateTessellationCache()
+{
+    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    auto verticesDesc = BufferDescription(CachedVertexBufferBytes);
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,&verticesDesc, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, nullptr,IID_PPV_ARGS(&m_cachedTessVertices)), "Create tessellation vertex cache");
+    m_cachedTessVertexView = { m_cachedTessVertices->GetGPUVirtualAddress(),static_cast<UINT>(CachedVertexBufferBytes), CachedVertexStride };
+
+    auto filledSizeDesc = BufferDescription(sizeof(UINT));
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,&filledSizeDesc, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&m_cachedTessFilledSize)), "Create stream output counter");
+
+    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+    ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE,&filledSizeDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,IID_PPV_ARGS(&m_tessFilledSizeReset)), "Create stream output counter reset");
+    void* resetValue = nullptr;
+    const D3D12_RANGE noCpuReads{ 0, 0 };
+    ThrowIfFailed(m_tessFilledSizeReset->Map(0, &noCpuReads, &resetValue), "Map stream output counter reset");
+    *static_cast<UINT*>(resetValue) = 0;
+    const D3D12_RANGE writtenBytes{ 0, sizeof(UINT) };
+    m_tessFilledSizeReset->Unmap(0, &writtenBytes);
+
+    auto drawArgsDesc = BufferDescription(sizeof(D3D12_DRAW_ARGUMENTS));
+    drawArgsDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,&drawArgsDesc, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, nullptr,IID_PPV_ARGS(&m_cachedTessDrawArgs)), "Create cached tessellation draw arguments");
+
+    D3D12_ROOT_PARAMETER parameters[2]{};
+    parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    parameters[0].Descriptor.ShaderRegister = 0;
+    parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+    parameters[1].Descriptor.ShaderRegister = 0;
+    parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    D3D12_ROOT_SIGNATURE_DESC rootDesc{};
+    rootDesc.NumParameters = 2;
+    rootDesc.pParameters = parameters;
+    ComPtr<ID3DBlob> signature, errors;
+    const HRESULT hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+                                                     &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer())
+                                        : "Tessellation draw args root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(),
+        signature->GetBufferSize(), IID_PPV_ARGS(&m_tessDrawArgsRootSignature)),
+        "Create tessellation draw args root signature");
+
+    const auto drawArgsCs = CompileShader(m_runtimeDirectory / L"shader/TessellationDrawArgs.hlsl",
+                                          "CSMain", "cs_5_1");
+    D3D12_COMPUTE_PIPELINE_STATE_DESC compute{};
+    compute.pRootSignature = m_tessDrawArgsRootSignature.Get();
+    compute.CS = { drawArgsCs->GetBufferPointer(), drawArgsCs->GetBufferSize() };
+    ThrowIfFailed(m_device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&m_tessDrawArgsPso)),
+                  "Create tessellation draw args PSO");
+
+    D3D12_INDIRECT_ARGUMENT_DESC argument{};
+    argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+    D3D12_COMMAND_SIGNATURE_DESC commandSignature{};
+    commandSignature.ByteStride = sizeof(D3D12_DRAW_ARGUMENTS);
+    commandSignature.NumArgumentDescs = 1;
+    commandSignature.pArgumentDescs = &argument;
+    ThrowIfFailed(m_device->CreateCommandSignature(&commandSignature, nullptr,
+        IID_PPV_ARGS(&m_tessDrawCommandSignature)), "Create cached tessellation draw signature");
 }
 
 void RenderingSystem::LoadAssets()
@@ -639,10 +729,69 @@ void RenderingSystem::UpdateShadowCascades(const Camera& camera)
     }
 }
 
+void RenderingSystem::UpdateTessellationCache(const Camera& camera, float totalTime)
+{
+    auto verticesToOutput = TransitionBarrier(m_cachedTessVertices.Get(),D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_RESOURCE_STATE_STREAM_OUT);
+    auto counterToCopy = TransitionBarrier(m_cachedTessFilledSize.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    const D3D12_RESOURCE_BARRIER beforeCapture[]{ verticesToOutput, counterToCopy };
+    m_commandList->ResourceBarrier(static_cast<UINT>(std::size(beforeCapture)), beforeCapture);
+    m_commandList->CopyBufferRegion(m_cachedTessFilledSize.Get(), 0,m_tessFilledSizeReset.Get(), 0, sizeof(UINT));
+    auto counterToOutput = TransitionBarrier(m_cachedTessFilledSize.Get(),D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_STREAM_OUT);
+    m_commandList->ResourceBarrier(1, &counterToOutput);
+
+    const D3D12_STREAM_OUTPUT_BUFFER_VIEW output{
+        m_cachedTessVertices->GetGPUVirtualAddress(), CachedVertexBufferBytes,
+        m_cachedTessFilledSize->GetGPUVirtualAddress()
+    };
+    m_commandList->OMSetRenderTargets(0, nullptr, FALSE, nullptr);
+    m_commandList->SOSetTargets(0, 1, &output);
+    m_commandList->SetGraphicsRootSignature(m_geometryRootSignature.Get());
+    m_commandList->SetPipelineState(m_tessCapturePso.Get());
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+    m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(4));
+    m_tessellationMesh.Bind(m_commandList.Get());
+    ObjectConstants constants{};
+    XMStoreFloat4x4(&constants.world, XMMatrixScaling(5, 1, 5) * XMMatrixTranslation(0, .15f, 17));
+    XMStoreFloat4x4(&constants.viewProjection, camera.ViewProjection());
+    const XMFLOAT3 cameraPosition = camera.Position();
+    constants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
+    constants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
+    constants.materialColor = { .45f, .7f, .9f, 1.0f };
+    constants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
+    m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
+    m_commandList->DrawIndexedInstanced(m_tessellationMesh.IndexCount(), 1, 0, 0, 0);
+    m_commandList->SOSetTargets(0, 0, nullptr);
+
+    auto verticesToInput = TransitionBarrier(m_cachedTessVertices.Get(),
+        D3D12_RESOURCE_STATE_STREAM_OUT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    auto counterToInput = TransitionBarrier(m_cachedTessFilledSize.Get(),
+        D3D12_RESOURCE_STATE_STREAM_OUT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    auto argsToWrite = TransitionBarrier(m_cachedTessDrawArgs.Get(),
+        D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    const D3D12_RESOURCE_BARRIER afterCapture[]{ verticesToInput, counterToInput, argsToWrite };
+    m_commandList->ResourceBarrier(static_cast<UINT>(std::size(afterCapture)), afterCapture);
+
+    m_commandList->SetComputeRootSignature(m_tessDrawArgsRootSignature.Get());
+    m_commandList->SetPipelineState(m_tessDrawArgsPso.Get());
+    m_commandList->SetComputeRootShaderResourceView(0, m_cachedTessFilledSize->GetGPUVirtualAddress());
+    m_commandList->SetComputeRootUnorderedAccessView(1, m_cachedTessDrawArgs->GetGPUVirtualAddress());
+    m_commandList->Dispatch(1, 1, 1);
+    auto argsToDraw = TransitionBarrier(m_cachedTessDrawArgs.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    m_commandList->ResourceBarrier(1, &argsToDraw);
+}
+
+void RenderingSystem::DrawCachedTessellation(const ObjectConstants& constants)
+{
+    m_commandList->IASetVertexBuffers(0, 1, &m_cachedTessVertexView);
+    m_commandList->IASetIndexBuffer(nullptr);
+    m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
+    m_commandList->ExecuteIndirect(m_tessDrawCommandSignature.Get(), 1,m_cachedTessDrawArgs.Get(), 0, nullptr, 0);
+}
+
 void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
 {
-    auto toDepth = TransitionBarrier(m_shadowMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                     D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    auto toDepth = TransitionBarrier(m_shadowMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_DEPTH_WRITE);
     m_commandList->ResourceBarrier(1, &toDepth);
     m_commandList->RSSetViewports(1, &m_shadowViewport); 
     m_commandList->RSSetScissorRects(1, &m_shadowScissor); 
@@ -670,21 +819,19 @@ void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
                 m_commandList->DrawIndexedInstanced(submesh.indexCount, 1, submesh.firstIndex, 0, 0);
         }
 
-        // Теселяция момент
+        // Сетка берётся из GPU-буфера, заполненного Stream Output.
         m_commandList->SetGraphicsRootSignature(m_geometryRootSignature.Get());
-        m_commandList->SetPipelineState(m_shadowTessellationPso.Get());
-        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-        m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(4)); // Таблица albedo/normal/displacement.
-        m_tessellationMesh.Bind(m_commandList.Get());
+        m_commandList->SetPipelineState(m_cachedShadowPso.Get());
+        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(4)); 
         ObjectConstants tessConstants{};
         XMStoreFloat4x4(&tessConstants.world, XMMatrixScaling(5, 1, 5) * XMMatrixTranslation(0, .15f, 17));
-        tessConstants.viewProjection = m_shadowViewProjections[cascade]; // В shadow HLSL это light view-projection.
+        tessConstants.viewProjection = m_shadowViewProjections[cascade];
         tessConstants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
         tessConstants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
         tessConstants.materialColor = { 1,1,1,1 };
         tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
-        m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&tessConstants, sizeof(tessConstants)));
-        m_commandList->DrawIndexedInstanced(m_tessellationMesh.IndexCount(), 1, 0, 0, 0);
+        DrawCachedTessellation(tessConstants);
     }
 
     auto toShaderResource = TransitionBarrier(m_shadowMap.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -702,7 +849,7 @@ D3D12_GPU_VIRTUAL_ADDRESS RenderingSystem::UploadConstants(const void* data, siz
     return address;
 }
 
-void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
+void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation)
 {
     ThrowIfFailed(m_allocators[m_frameIndex]->Reset(), "Reset command allocator");
     ThrowIfFailed(m_commandList->Reset(m_allocators[m_frameIndex].Get(), nullptr), "Reset command list");
@@ -712,10 +859,12 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
     ID3D12DescriptorHeap* heaps[]{ m_srvHeap.Get() };
     m_commandList->SetDescriptorHeaps(1, heaps); 
 
+    if (refreshTessellation)
+        UpdateTessellationCache(camera, totalTime);
     RenderShadowMaps(camera, totalTime);
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissor);
-    m_gbuffer.BeginGeometry(m_commandList.Get()); 
+    m_gbuffer.BeginGeometry(m_commandList.Get());
     m_commandList->SetGraphicsRootSignature(m_geometryRootSignature.Get());
     m_commandList->SetPipelineState(m_geometryPso.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -748,9 +897,9 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
         }
     }
 
-    m_commandList->SetPipelineState(m_tessellationPso.Get());
-    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-    m_tessellationMesh.Bind(m_commandList.Get());
+    m_commandList->SetPipelineState(m_cachedTessellationPso.Get());
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(4));
     ObjectConstants tessConstants{};
     XMStoreFloat4x4(&tessConstants.world, XMMatrixScaling(5, 1, 5) * XMMatrixTranslation(0, .15f, 17));
     XMStoreFloat4x4(&tessConstants.viewProjection, viewProjection);
@@ -758,8 +907,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime)
     tessConstants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
     tessConstants.materialColor = { .45f,.7f,.9f,1 };
     tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
-    m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&tessConstants, sizeof(tessConstants)));
-    m_commandList->DrawIndexedInstanced(m_tessellationMesh.IndexCount(), 1, 0, 0, 0);
+    DrawCachedTessellation(tessConstants);
     m_gbuffer.EndGeometry(m_commandList.Get()); 
     auto backBarrier = TransitionBarrier(m_backBuffers[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
     m_commandList->ResourceBarrier(1, &backBarrier);
@@ -811,11 +959,18 @@ void RenderingSystem::Render(const Camera& camera, float totalTime)
 {
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex(); 
     WaitForFrame(m_frameIndex); 
+    const XMFLOAT3 cameraPosition = camera.Position();
+    const bool refreshTessellation = !m_tessCacheValid or cameraPosition.x != m_cachedTessCameraPosition.x || cameraPosition.y != m_cachedTessCameraPosition.y || cameraPosition.z != m_cachedTessCameraPosition.z;
     UpdateVisibility(camera);
     UpdateShadowCascades(camera);
-    PopulateCommandList(camera, totalTime);
+    PopulateCommandList(camera, totalTime, refreshTessellation);
     ID3D12CommandList* lists[]{ m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists);
+    if (refreshTessellation)
+    {
+        m_cachedTessCameraPosition = cameraPosition;
+        m_tessCacheValid = true;
+    }
     ThrowIfFailed(m_swapChain->Present(1, 0), "Present"); 
     const UINT64 value = ++m_nextFenceValue;
     ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), value), "Signal frame fence"); 

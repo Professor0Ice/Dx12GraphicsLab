@@ -102,6 +102,33 @@ DomainOutput DSMain(PatchConstants constants, float2 domain : SV_DomainLocation,
     return output;
 }
 
+// Записываем треугольники после tessellator/domain shader в Stream Output.
+[maxvertexcount(3)]
+void GSCache(triangle DomainOutput input[3], inout TriangleStream<DomainOutput> output)
+{
+    [unroll] for (uint i = 0; i < 3; ++i)
+        output.Append(input[i]);
+}
+
+struct CachedInput
+{
+    float3 worldPosition : POSITION;
+    float3 normal : NORMAL;
+    float3 tangent : TANGENT;
+    float2 uv : TEXCOORD;
+};
+
+DomainOutput CachedVS(CachedInput input)
+{
+    DomainOutput output;
+    output.position = mul(float4(input.worldPosition, 1.0f), gViewProjection);
+    output.worldPosition = input.worldPosition;
+    output.normal = input.normal;
+    output.tangent = input.tangent;
+    output.uv = input.uv;
+    return output;
+}
+
 struct GBufferOutput
 {
     float4 albedo : SV_TARGET0;
