@@ -133,6 +133,22 @@ MeshData Mesh::CubeData()
     return data;
 }
 
+MeshData Mesh::BillboardData()
+{
+    MeshData data;
+    // Прямоугольник смотрит вдоль локальной оси -Z; его матрица разворачивается к камере.
+    data.vertices = {
+        {{-.5f,-.5f,0},{0,0,-1},{1,0,0,1},{0,1}},
+        {{-.5f, .5f,0},{0,0,-1},{1,0,0,1},{0,0}},
+        {{ .5f, .5f,0},{0,0,-1},{1,0,0,1},{1,0}},
+        {{ .5f,-.5f,0},{0,0,-1},{1,0,0,1},{1,1}}
+    };
+    data.indices = { 0, 1, 2, 0, 2, 3 };
+    data.materials.emplace_back();
+    data.submeshes.push_back({ 0, static_cast<uint32_t>(data.indices.size()), 0 });
+    return data;
+}
+
 MeshData Mesh::TessellatedQuadData()
 {
     MeshData data;

@@ -48,13 +48,23 @@ private:
         Gato
     };
 
+    enum class LodLevel : uint8_t
+    {
+        Mesh = 0,
+        Sprite = 1,
+        Hidden = 2,
+        FarHidden = 3
+    };
+
     struct SceneObject
     {
         DirectX::XMFLOAT4X4 world{}; // Переводит вершины модели в мировое пространство.
+        DirectX::XMFLOAT4X4 spriteWorld{};
         DirectX::BoundingBox bounds{}; // Границы объекта для отсечения невидимых объектов.
         DirectX::XMFLOAT4 color{ 1, 1, 1, 1 }; // Множитель цвета материала RGBA.
         DirectX::XMFLOAT4 uvParameters{ 2.0f, 2.0f, 0.06f, 0.025f }; // Масштаб 
         SceneMesh mesh = SceneMesh::Cube;
+        LodLevel lod = LodLevel::Mesh;
         UINT textureTableStart = 4; // Первый SRV текстур объекта в общей таблице дескрипторов.
     };
 
@@ -110,6 +120,7 @@ private:
     void LoadAssets();
     void BuildScene();
     const Mesh& MeshFor(const SceneObject& object) const;
+    void UpdateLods(const Camera& camera);
     void UpdateVisibility(const Camera& camera);
     void UpdateShadowCascades(const Camera& camera);
     void RenderShadowMaps(const Camera& camera, float totalTime);
@@ -146,8 +157,10 @@ private:
     ComPtr<ID3D12RootSignature> m_lightingRootSignature; // Связи G-buffer, теней и света.
     ComPtr<ID3D12RootSignature> m_shadowRootSignature; // Только матрицы объекта и солнца для теней.
     ComPtr<ID3D12PipelineState> m_geometryPso;
+    ComPtr<ID3D12PipelineState> m_spritePso;
     ComPtr<ID3D12PipelineState> m_lightingPso;
     ComPtr<ID3D12PipelineState> m_shadowPso;
+    ComPtr<ID3D12PipelineState> m_spriteShadowPso;
     ComPtr<ID3D12PipelineState> m_tessCapturePso;
     ComPtr<ID3D12PipelineState> m_cachedTessellationPso;
     ComPtr<ID3D12PipelineState> m_cachedShadowPso;
@@ -183,6 +196,7 @@ private:
 
     GBuffer m_gbuffer;
     Mesh m_cubeMesh;
+    Mesh m_billboardMesh;
     Mesh m_objMesh;
     Mesh m_gatoMesh;
     Mesh m_tessellationMesh;

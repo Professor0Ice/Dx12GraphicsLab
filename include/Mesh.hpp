@@ -37,6 +37,7 @@ class Mesh
 {
 public:
     static MeshData CubeData();
+    static MeshData BillboardData();
     static MeshData TessellatedQuadData();
     static MeshData LoadObj(const std::filesystem::path& path);
 

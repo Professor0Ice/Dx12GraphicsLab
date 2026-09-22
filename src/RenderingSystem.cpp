@@ -395,6 +395,11 @@ void RenderingSystem::CreatePipelineStates()
     geometry.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&geometry, IID_PPV_ARGS(&m_geometryPso)),"Create geometry PSO");
 
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC sprite = geometry;
+    sprite.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&sprite, IID_PPV_ARGS(&m_spritePso)),
+                  "Create sprite PSO");
+
     D3D12_GRAPHICS_PIPELINE_STATE_DESC tessellation = geometry;
     tessellation.VS = { tessVs->GetBufferPointer(), tessVs->GetBufferSize() };
     tessellation.HS = { tessHs->GetBufferPointer(), tessHs->GetBufferSize() };
@@ -464,6 +469,11 @@ void RenderingSystem::CreatePipelineStates()
     shadow.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     shadow.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&shadow, IID_PPV_ARGS(&m_shadowPso)),"Create shadow PSO");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC spriteShadow = shadow;
+    spriteShadow.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&spriteShadow,
+        IID_PPV_ARGS(&m_spriteShadowPso)), "Create sprite shadow PSO");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC cachedShadow = shadow;
     cachedShadow.pRootSignature = m_geometryRootSignature.Get();
@@ -549,6 +559,7 @@ void RenderingSystem::CreateTessellationCache()
 void RenderingSystem::LoadAssets()
 {
     m_cubeMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::CubeData());
+    m_billboardMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::BillboardData());
     m_tessellationMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::TessellatedQuadData());
     m_objMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::LoadObj(m_runtimeDirectory / L"assets/showcase.obj"));
     m_gatoMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::LoadObj(m_runtimeDirectory / L"assets/Gato.obj"));
@@ -569,6 +580,10 @@ void RenderingSystem::BuildScene()
         XMStoreFloat4x4(&object.world, world);
         object.mesh = mesh;
         MeshFor(object).Bounds().Transform(object.bounds, world); 
+        // Вращающийся спрайт должен помещаться в границы для frustum и octree culling.
+        const float horizontalRadius = std::hypot(object.bounds.Extents.x, object.bounds.Extents.z);
+        object.bounds.Extents.x = horizontalRadius;
+        object.bounds.Extents.z = horizontalRadius;
         object.color = color;
         object.uvParameters = uvParameters;
         object.textureTableStart = mesh == SceneMesh::Gato ? 7u : 4u;
@@ -619,7 +634,38 @@ const Mesh& RenderingSystem::MeshFor(const SceneObject& object) const
     }
 }
 
-// Простой проход оптимизации геом
+void RenderingSystem::UpdateLods(const Camera& camera)
+{
+    constexpr float spriteDistance = 25.0f;
+    constexpr float hiddenDistance = 60.0f;
+    const XMFLOAT3 cameraPositionFloat = camera.Position();
+    const XMVECTOR cameraPosition = XMLoadFloat3(&cameraPositionFloat);
+    XMMATRIX cameraRotation = XMMatrixInverse(nullptr, camera.View());
+    cameraRotation.r[3] = XMVectorSet(0, 0, 0, 1);
+
+    for (SceneObject& object : m_objects)
+    {
+        const float radius = std::sqrt(object.bounds.Extents.x * object.bounds.Extents.x +
+                                       object.bounds.Extents.y * object.bounds.Extents.y +
+                                       object.bounds.Extents.z * object.bounds.Extents.z);
+        const float distance = std::max(0.0f,
+            XMVectorGetX(XMVector3Length(XMLoadFloat3(&object.bounds.Center) - cameraPosition)) - radius);
+        object.lod = distance < spriteDistance ? LodLevel::Mesh
+                   : distance < hiddenDistance ? LodLevel::Sprite
+                   : LodLevel::FarHidden;
+
+        if (object.lod == LodLevel::Sprite)
+        {
+            const XMFLOAT3 center = object.bounds.Center;
+            const float width = 2.0f * object.bounds.Extents.x;
+            const float height = 2.0f * object.bounds.Extents.y;
+            XMStoreFloat4x4(&object.spriteWorld,
+                XMMatrixScaling(width, height, 1.0f) * cameraRotation *
+                XMMatrixTranslation(center.x, center.y, center.z));
+        }
+    }
+}
+
 void RenderingSystem::UpdateVisibility(const Camera& camera)
 {
     m_visibleIndices.clear();
@@ -627,16 +673,18 @@ void RenderingSystem::UpdateVisibility(const Camera& camera)
     {
         m_visibleIndices.resize(m_objects.size());
         for (uint32_t i = 0; i < m_objects.size(); ++i) m_visibleIndices[i] = i;
-        return;
     }
-    const BoundingFrustum frustum = camera.WorldFrustum(); 
-    if (m_cullingMode == CullingMode::Octree)
+    else
     {
-        m_octree->Query(frustum, m_visibleIndices);
-        return;
+        const BoundingFrustum frustum = camera.WorldFrustum();
+        if (m_cullingMode == CullingMode::Octree)
+            m_octree->Query(frustum, m_visibleIndices);
+        else
+            for (uint32_t i = 0; i < m_objects.size(); ++i)
+                if (frustum.Contains(m_objects[i].bounds) not_eq DISJOINT) m_visibleIndices.push_back(i);
     }
-    for (uint32_t i = 0; i < m_objects.size(); ++i)
-        if (frustum.Contains(m_objects[i].bounds) not_eq DISJOINT) m_visibleIndices.push_back(i);
+    m_visibleIndices.erase(std::remove_if(m_visibleIndices.begin(), m_visibleIndices.end(),
+        [&](uint32_t index) { return m_objects[index].lod >= LodLevel::Hidden; }), m_visibleIndices.end());
 }
 
 void RenderingSystem::UpdateShadowCascades(const Camera& camera)
@@ -708,6 +756,7 @@ void RenderingSystem::UpdateShadowCascades(const Camera& camera)
         visible.reserve(m_objects.size() / 2);
         for (uint32_t objectIndex = 0; objectIndex < m_objects.size(); ++objectIndex)
         {
+            if (m_objects[objectIndex].lod >= LodLevel::Hidden) continue;
             BoundingBox lightBounds;
             m_objects[objectIndex].bounds.Transform(lightBounds, lightView);
             const XMFLOAT3 minimum{
@@ -811,9 +860,12 @@ void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
         for (uint32_t objectIndex : m_shadowVisibleIndices[cascade])
         {
             const SceneObject& object = m_objects[objectIndex];
-            const Mesh& mesh = MeshFor(object);
+            const bool isSprite = object.lod == LodLevel::Sprite;
+            m_commandList->SetPipelineState(isSprite ? m_spriteShadowPso.Get() : m_shadowPso.Get());
+            const Mesh& mesh = isSprite ? m_billboardMesh : MeshFor(object);
             mesh.Bind(m_commandList.Get());
-            ShadowConstants constants{ object.world, m_shadowViewProjections[cascade] };
+            ShadowConstants constants{ isSprite ? object.spriteWorld : object.world,
+                                       m_shadowViewProjections[cascade] };
             m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
             for (const Submesh& submesh : mesh.Submeshes())
                 m_commandList->DrawIndexedInstanced(submesh.indexCount, 1, submesh.firstIndex, 0, 0);
@@ -875,19 +927,24 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     for (uint32_t index : m_visibleIndices)
     {
         const SceneObject& object = m_objects[index];
+        const bool isSprite = object.lod == LodLevel::Sprite;
+        m_commandList->SetPipelineState(isSprite ? m_spritePso.Get() : m_geometryPso.Get());
         ObjectConstants constants{};
-        constants.world = object.world; 
+        constants.world = isSprite ? object.spriteWorld : object.world;
         XMStoreFloat4x4(&constants.viewProjection, viewProjection);
         constants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
         constants.uvParameters = object.uvParameters;
         constants.tessellationParameters = { 1, 1, 1, 1 };
-        const Mesh& mesh = MeshFor(object);
+        const Mesh& sourceMesh = MeshFor(object);
+        const Mesh& mesh = isSprite ? m_billboardMesh : sourceMesh;
         m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(object.textureTableStart));
         mesh.Bind(m_commandList.Get());
         for (const Submesh& submesh : mesh.Submeshes())
         {
-            const XMFLOAT4 material = submesh.materialIndex < mesh.Materials().size()
-                ? mesh.Materials()[submesh.materialIndex].diffuse : XMFLOAT4{ 1,1,1,1 };
+            const uint32_t materialIndex = isSprite ? sourceMesh.Submeshes().front().materialIndex
+                                                    : submesh.materialIndex;
+            const XMFLOAT4 material = materialIndex < sourceMesh.Materials().size()
+                ? sourceMesh.Materials()[materialIndex].diffuse : XMFLOAT4{ 1,1,1,1 };
             constants.materialColor = {
                 object.color.x * material.x, object.color.y * material.y,
                 object.color.z * material.z, object.color.w * material.w
@@ -961,6 +1018,7 @@ void RenderingSystem::Render(const Camera& camera, float totalTime)
     WaitForFrame(m_frameIndex); 
     const XMFLOAT3 cameraPosition = camera.Position();
     const bool refreshTessellation = !m_tessCacheValid or cameraPosition.x != m_cachedTessCameraPosition.x || cameraPosition.y != m_cachedTessCameraPosition.y || cameraPosition.z != m_cachedTessCameraPosition.z;
+    UpdateLods(camera);
     UpdateVisibility(camera);
     UpdateShadowCascades(camera);
     PopulateCommandList(camera, totalTime, refreshTessellation);
