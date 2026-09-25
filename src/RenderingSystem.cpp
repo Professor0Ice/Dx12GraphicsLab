@@ -101,6 +101,7 @@ RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
     CreatePipelineStates();
     CreateConstantUpload();
     CreateTessellationCache();
+    CreateParticleResources();
     LoadAssets();
     BuildScene();
 
@@ -109,6 +110,7 @@ RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
     ID3D12CommandList* lists[]{ m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists); 
     FlushGpu(); 
+    m_particleInitialUpload.Reset();
 }
 
 RenderingSystem::~RenderingSystem()
@@ -329,6 +331,61 @@ void RenderingSystem::CreateRootSignatures()
         throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
     ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
                                                 IID_PPV_ARGS(&m_shadowRootSignature)), "Create shadow root signature");
+
+    D3D12_DESCRIPTOR_RANGE particleUavRange{};
+    particleUavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    particleUavRange.NumDescriptors = 2;
+    particleUavRange.BaseShaderRegister = 0;
+    particleUavRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> particleComputeParams{};
+    particleComputeParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    particleComputeParams[0].Descriptor.ShaderRegister = 0;
+    particleComputeParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    particleComputeParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    particleComputeParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    particleComputeParams[1].DescriptorTable.pDescriptorRanges = &particleUavRange;
+    particleComputeParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    D3D12_ROOT_SIGNATURE_DESC particleComputeDesc{};
+    particleComputeDesc.NumParameters = static_cast<UINT>(particleComputeParams.size());
+    particleComputeDesc.pParameters = particleComputeParams.data();
+    particleComputeDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_DENY_VERTEX_SHADER_ROOT_ACCESS |
+                                D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+                                D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+                                D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+                                D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    hr = D3D12SerializeRootSignature(&particleComputeDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer())
+                                        : "Particle compute root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_particleComputeRootSignature)), "Create particle compute root signature");
+
+    D3D12_DESCRIPTOR_RANGE particleSrvRange{};
+    particleSrvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    particleSrvRange.NumDescriptors = 1;
+    particleSrvRange.BaseShaderRegister = 0;
+    particleSrvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    std::array<D3D12_ROOT_PARAMETER, 2> particleDrawParams{};
+    particleDrawParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    particleDrawParams[0].Descriptor.ShaderRegister = 0;
+    particleDrawParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
+    particleDrawParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    particleDrawParams[1].DescriptorTable.NumDescriptorRanges = 1;
+    particleDrawParams[1].DescriptorTable.pDescriptorRanges = &particleSrvRange;
+    particleDrawParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_SIGNATURE_DESC particleDrawDesc{};
+    particleDrawDesc.NumParameters = static_cast<UINT>(particleDrawParams.size());
+    particleDrawDesc.pParameters = particleDrawParams.data();
+    particleDrawDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+                             D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+                             D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+                             D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    hr = D3D12SerializeRootSignature(&particleDrawDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &errors);
+    if (FAILED(hr))
+        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer())
+                                        : "Particle draw root signature error");
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+        IID_PPV_ARGS(&m_particleDrawRootSignature)), "Create particle draw root signature");
 }
 
 ComPtr<ID3DBlob> RenderingSystem::CompileShader(const std::filesystem::path& file,const char* entry, const char* target) const
@@ -355,8 +412,8 @@ void RenderingSystem::CreatePipelineStates()
 {
     const auto geometryVs = CompileShader(m_runtimeDirectory / L"shader/Geometry.hlsl", "VSMain", "vs_5_1");
     const auto geometryPs = CompileShader(m_runtimeDirectory / L"shader/Geometry.hlsl", "PSMain", "ps_5_1");
-    const auto lightingVs = CompileShader(m_runtimeDirectory / L"shader/Lighting.hlsl", "VSMain", "vs_5_1");
-    const auto lightingPs = CompileShader(m_runtimeDirectory / L"shader/Lighting.hlsl", "PSMain", "ps_5_1");
+    const auto lightingVs = CompileShader(m_runtimeDirectory / L"shader/FullscreenQuad.hlsl", "VSMain", "vs_5_1");
+    const auto lightingPs = CompileShader(m_runtimeDirectory / L"shader/PostProcess.hlsl", "PSMain", "ps_5_1");
     const auto tessVs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "VSMain", "vs_5_1");
     const auto tessHs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "HSMain", "hs_5_1");
     const auto tessDs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "DSMain", "ds_5_1");
@@ -365,6 +422,10 @@ void RenderingSystem::CreatePipelineStates()
     const auto cachedTessVs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "CachedVS", "vs_5_1");
     const auto shadowVs = CompileShader(m_runtimeDirectory / L"shader/Shadow.hlsl", "VSMain", "vs_5_1");
     const auto cachedShadowVs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "CachedVS", "vs_5_1");
+    const auto particleCs = CompileShader(m_runtimeDirectory / L"shader/ParticleUpdate.hlsl", "CSMain", "cs_5_1");
+    const auto particleVs = CompileShader(m_runtimeDirectory / L"shader/ParticleRender.hlsl", "VSMain", "vs_5_1");
+    const auto particleGs = CompileShader(m_runtimeDirectory / L"shader/ParticleRender.hlsl", "GSMain", "gs_5_1");
+    const auto particlePs = CompileShader(m_runtimeDirectory / L"shader/ParticleRender.hlsl", "PSMain", "ps_5_1");
 
     const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -482,6 +543,31 @@ void RenderingSystem::CreatePipelineStates()
     cachedShadow.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&cachedShadow,
         IID_PPV_ARGS(&m_cachedShadowPso)), "Create cached tessellation shadow PSO");
+
+    D3D12_COMPUTE_PIPELINE_STATE_DESC particleCompute{};
+    particleCompute.pRootSignature = m_particleComputeRootSignature.Get();
+    particleCompute.CS = { particleCs->GetBufferPointer(), particleCs->GetBufferSize() };
+    ThrowIfFailed(m_device->CreateComputePipelineState(&particleCompute,
+        IID_PPV_ARGS(&m_particleComputePso)), "Create particle compute PSO");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC particleDraw{};
+    particleDraw.pRootSignature = m_particleDrawRootSignature.Get();
+    particleDraw.VS = { particleVs->GetBufferPointer(), particleVs->GetBufferSize() };
+    particleDraw.GS = { particleGs->GetBufferPointer(), particleGs->GetBufferSize() };
+    particleDraw.PS = { particlePs->GetBufferPointer(), particlePs->GetBufferSize() };
+    particleDraw.BlendState = DefaultBlend();
+    particleDraw.SampleMask = UINT_MAX;
+    particleDraw.RasterizerState = DefaultRasterizer();
+    particleDraw.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    particleDraw.DepthStencilState = DefaultDepth();
+    particleDraw.InputLayout = { nullptr, 0 };
+    particleDraw.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+    particleDraw.NumRenderTargets = GBuffer::TargetCount;
+    for (UINT i = 0; i < GBuffer::TargetCount; ++i) particleDraw.RTVFormats[i] = m_gbuffer.Formats()[i];
+    particleDraw.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    particleDraw.SampleDesc.Count = 1;
+    ThrowIfFailed(m_device->CreateGraphicsPipelineState(&particleDraw,
+        IID_PPV_ARGS(&m_particleDrawPso)), "Create particle draw PSO");
 }
 
 void RenderingSystem::CreateConstantUpload()
@@ -556,6 +642,100 @@ void RenderingSystem::CreateTessellationCache()
         IID_PPV_ARGS(&m_tessDrawCommandSignature)), "Create cached tessellation draw signature");
 }
 
+void RenderingSystem::CreateParticleResources()
+{
+    static_assert(sizeof(ParticleGpu) == 32, "Particle layout must match HLSL");
+    constexpr UINT64 particleBytes = static_cast<UINT64>(MaxParticles) * sizeof(ParticleGpu);
+    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+
+    auto particleDesc = BufferDescription(particleBytes);
+    particleDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDesc,D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_particleBuffers[0])),"Create first particle buffer");
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDesc,D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_particleBuffers[1])),"Create second particle buffer");
+    auto uploadDesc = BufferDescription(particleBytes);
+    ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_particleInitialUpload)),"Create particle initialization upload buffer");
+
+    std::vector<ParticleGpu> initialParticles(MaxParticles);
+    uint32_t randomState = 0x83a49c17u;
+    auto random01 = [&]()
+    {
+        randomState = randomState * 1664525u + 1013904223u;
+        return (randomState >> 8) * (1.0f / 16777216.0f);
+    };
+
+    constexpr XMFLOAT3 emitter{ 0.0f, 12.0f, 8.0f };
+    constexpr float fallSpeed = 6.0f;
+    for (ParticleGpu& particle : initialParticles)
+    {
+        particle.position = {
+            emitter.x + (random01() - 0.5f) * 14.0f,
+            0.5f + random01() * (emitter.y - 0.5f),
+            emitter.z + (random01() - 0.5f) * 20.0f
+        };
+        particle.padding0 = 0.0f;
+        particle.velocity = { 0.0f, -fallSpeed, 0.0f };
+        particle.padding1 = 0.0f;
+    }
+
+    void* mappedParticles = nullptr;
+    const D3D12_RANGE noCpuReads{ 0, 0 };
+    ThrowIfFailed(m_particleInitialUpload->Map(0, &noCpuReads, &mappedParticles),"Map particle initialization buffer");
+    memcpy(mappedParticles, initialParticles.data(), static_cast<size_t>(particleBytes));
+    const D3D12_RANGE particleWriteRange{ 0, static_cast<SIZE_T>(particleBytes) };
+    m_particleInitialUpload->Unmap(0, &particleWriteRange);
+    m_commandList->CopyBufferRegion(m_particleBuffers[0].Get(), 0, m_particleInitialUpload.Get(), 0, particleBytes);
+    auto particlesToUav = TransitionBarrier(m_particleBuffers[0].Get(),D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    m_commandList->ResourceBarrier(1, &particlesToUav);
+
+    auto counterDesc = BufferDescription(sizeof(UINT));
+    counterDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    for (auto& counter : m_particleCounters)
+        ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc,D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&counter)),"Create particle UAV counter");
+
+    auto counterUploadDesc = BufferDescription(2 * sizeof(UINT));
+    ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc,D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_particleCounterUpload)),"Create particle counter upload buffer");
+    void* mappedCounters = nullptr;
+    ThrowIfFailed(m_particleCounterUpload->Map(0, &noCpuReads, &mappedCounters), "Map particle counter upload");
+    const std::array<UINT, 2> counterValues{ 0u, MaxParticles };
+    memcpy(mappedCounters, counterValues.data(), sizeof(counterValues));
+    const D3D12_RANGE counterWriteRange{ 0, sizeof(counterValues) };
+    m_particleCounterUpload->Unmap(0, &counterWriteRange);
+    m_commandList->CopyBufferRegion(m_particleCounters[0].Get(), 0,m_particleCounterUpload.Get(), sizeof(UINT), sizeof(UINT));
+    m_commandList->CopyBufferRegion(m_particleCounters[1].Get(), 0,m_particleCounterUpload.Get(), 0, sizeof(UINT));
+    std::array<D3D12_RESOURCE_BARRIER, 2> countersToUav{
+        TransitionBarrier(m_particleCounters[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        TransitionBarrier(m_particleCounters[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+    };
+    m_commandList->ResourceBarrier(static_cast<UINT>(countersToUav.size()), countersToUav.data());
+
+    auto createUav = [&](UINT bufferIndex, UINT descriptorIndex)
+    {
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+        uav.Format = DXGI_FORMAT_UNKNOWN;
+        uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uav.Buffer.NumElements = MaxParticles;
+        uav.Buffer.StructureByteStride = sizeof(ParticleGpu);
+        uav.Buffer.CounterOffsetInBytes = 0;
+        m_device->CreateUnorderedAccessView(m_particleBuffers[bufferIndex].Get(),
+            m_particleCounters[bufferIndex].Get(), &uav, CpuSrv(descriptorIndex));
+    };
+    // Две непрерывные таблицы UAV позволяют менять роли Consume/Append без копирования дескрипторов.
+    createUav(0, 10);
+    createUav(1, 11);
+    createUav(1, 12);
+    createUav(0, 13);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv.Format = DXGI_FORMAT_UNKNOWN;
+    srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srv.Buffer.NumElements = MaxParticles;
+    srv.Buffer.StructureByteStride = sizeof(ParticleGpu);
+    m_device->CreateShaderResourceView(m_particleBuffers[0].Get(), &srv, CpuSrv(14));
+    m_device->CreateShaderResourceView(m_particleBuffers[1].Get(), &srv, CpuSrv(15));
+}
+
 void RenderingSystem::LoadAssets()
 {
     m_cubeMesh.Upload(m_device.Get(), m_commandList.Get(), Mesh::CubeData());
@@ -580,7 +760,6 @@ void RenderingSystem::BuildScene()
         XMStoreFloat4x4(&object.world, world);
         object.mesh = mesh;
         MeshFor(object).Bounds().Transform(object.bounds, world); 
-        // Вращающийся спрайт должен помещаться в границы для frustum и octree culling.
         const float horizontalRadius = std::hypot(object.bounds.Extents.x, object.bounds.Extents.z);
         object.bounds.Extents.x = horizontalRadius;
         object.bounds.Extents.z = horizontalRadius;
@@ -669,20 +848,8 @@ void RenderingSystem::UpdateLods(const Camera& camera)
 void RenderingSystem::UpdateVisibility(const Camera& camera)
 {
     m_visibleIndices.clear();
-    if (m_cullingMode == CullingMode::Disabled)
-    {
-        m_visibleIndices.resize(m_objects.size());
-        for (uint32_t i = 0; i < m_objects.size(); ++i) m_visibleIndices[i] = i;
-    }
-    else
-    {
-        const BoundingFrustum frustum = camera.WorldFrustum();
-        if (m_cullingMode == CullingMode::Octree)
-            m_octree->Query(frustum, m_visibleIndices);
-        else
-            for (uint32_t i = 0; i < m_objects.size(); ++i)
-                if (frustum.Contains(m_objects[i].bounds) not_eq DISJOINT) m_visibleIndices.push_back(i);
-    }
+    // Самый быстрый из прежних режимов теперь используется постоянно.
+    m_octree->Query(camera.WorldFrustum(), m_visibleIndices);
     m_visibleIndices.erase(std::remove_if(m_visibleIndices.begin(), m_visibleIndices.end(),
         [&](uint32_t index) { return m_objects[index].lod >= LodLevel::Hidden; }), m_visibleIndices.end());
 }
@@ -901,7 +1068,85 @@ D3D12_GPU_VIRTUAL_ADDRESS RenderingSystem::UploadConstants(const void* data, siz
     return address;
 }
 
-void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation)
+void RenderingSystem::UpdateParticles(float deltaTime)
+{
+    const float simulationStep = std::clamp(deltaTime, 0.0f, 0.05f);
+    m_particleTime += simulationStep;
+
+    const UINT inputIndex = m_particleReadBuffer;
+    const UINT outputIndex = 1u - inputIndex;
+    if (m_particleBufferStates[inputIndex] != D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+    {
+        auto inputToUav = TransitionBarrier(m_particleBuffers[inputIndex].Get(),
+            m_particleBufferStates[inputIndex], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        m_commandList->ResourceBarrier(1, &inputToUav);
+        m_particleBufferStates[inputIndex] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+    if (m_particleBufferStates[outputIndex] != D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+    {
+        auto outputToUav = TransitionBarrier(m_particleBuffers[outputIndex].Get(),
+            m_particleBufferStates[outputIndex], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        m_commandList->ResourceBarrier(1, &outputToUav);
+        m_particleBufferStates[outputIndex] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+
+    // Перед Append обнуляется только скрытый счётчик выходного UAV; содержимое буфера
+    // перезаписывается compute shader-ом целиком.
+    auto counterToCopy = TransitionBarrier(m_particleCounters[outputIndex].Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+    m_commandList->ResourceBarrier(1, &counterToCopy);
+    m_commandList->CopyBufferRegion(m_particleCounters[outputIndex].Get(), 0,
+                                    m_particleCounterUpload.Get(), 0, sizeof(UINT));
+    auto counterToUav = TransitionBarrier(m_particleCounters[outputIndex].Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    m_commandList->ResourceBarrier(1, &counterToUav);
+
+    const ParticleSimulationConstants constants{
+        simulationStep, m_particleTime, MaxParticles, 0.0f,
+        { 0.0f, 12.0f, 8.0f }, 9.0f
+    };
+    m_commandList->SetComputeRootSignature(m_particleComputeRootSignature.Get());
+    m_commandList->SetPipelineState(m_particleComputePso.Get());
+    m_commandList->SetComputeRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
+    m_commandList->SetComputeRootDescriptorTable(1, GpuSrv(inputIndex == 0 ? 10 : 12));
+    m_commandList->Dispatch((MaxParticles + 63) / 64, 1, 1);
+
+    D3D12_RESOURCE_BARRIER uavBarrier{};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarrier.UAV.pResource = m_particleBuffers[outputIndex].Get();
+    m_commandList->ResourceBarrier(1, &uavBarrier);
+    auto outputToSrv = TransitionBarrier(m_particleBuffers[outputIndex].Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    m_commandList->ResourceBarrier(1, &outputToSrv);
+    m_particleBufferStates[outputIndex] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    m_particleReadBuffer = outputIndex;
+}
+
+void RenderingSystem::DrawParticles(const Camera& camera)
+{
+    ParticleDrawConstants constants{};
+    XMStoreFloat4x4(&constants.viewProjection, camera.ViewProjection());
+    const XMFLOAT3 cameraForwardFloat = camera.Direction();
+    const XMVECTOR cameraForward = XMLoadFloat3(&cameraForwardFloat);
+    const XMVECTOR cameraRight = XMVector3Normalize(
+        XMVector3Cross(XMVectorSet(0, 1, 0, 0), cameraForward));
+    const XMVECTOR cameraUp = XMVector3Normalize(XMVector3Cross(cameraForward, cameraRight));
+    XMStoreFloat4(&constants.cameraRight, cameraRight);
+    XMStoreFloat4(&constants.cameraUp, cameraUp);
+    constants.colorAndSize = { 0.18f, 0.62f, 1.0f, 0.045f };
+
+    m_commandList->SetGraphicsRootSignature(m_particleDrawRootSignature.Get());
+    m_commandList->SetPipelineState(m_particleDrawPso.Get());
+    m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
+    m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(m_particleReadBuffer == 0 ? 14 : 15));
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
+    m_commandList->IASetVertexBuffers(0, 0, nullptr);
+    m_commandList->IASetIndexBuffer(nullptr);
+    m_commandList->DrawInstanced(MaxParticles, 1, 0, 0);
+}
+
+void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime, float deltaTime,
+                                          bool refreshTessellation)
 {
     ThrowIfFailed(m_allocators[m_frameIndex]->Reset(), "Reset command allocator");
     ThrowIfFailed(m_commandList->Reset(m_allocators[m_frameIndex].Get(), nullptr), "Reset command list");
@@ -911,6 +1156,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     ID3D12DescriptorHeap* heaps[]{ m_srvHeap.Get() };
     m_commandList->SetDescriptorHeaps(1, heaps); 
 
+    UpdateParticles(deltaTime);
     if (refreshTessellation)
         UpdateTessellationCache(camera, totalTime);
     RenderShadowMaps(camera, totalTime);
@@ -965,6 +1211,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     tessConstants.materialColor = { .45f,.7f,.9f,1 };
     tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
     DrawCachedTessellation(tessConstants);
+    DrawParticles(camera);
     m_gbuffer.EndGeometry(m_commandList.Get()); 
     auto backBarrier = TransitionBarrier(m_backBuffers[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
     m_commandList->ResourceBarrier(1, &backBarrier);
@@ -986,6 +1233,12 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     lighting.shadowParameters = { 1.0f / static_cast<float>(ShadowMapSize), 0.00035f, 0.0025f, 0.0f };
     const XMFLOAT3 cameraForward = camera.Direction();
     lighting.cameraForward = { cameraForward.x, cameraForward.y, cameraForward.z, 0.0f };
+    lighting.postProcessParameters = {
+        static_cast<float>(m_postProcessMode),
+        1.0f / static_cast<float>(m_width),
+        1.0f / static_cast<float>(m_height),
+        0.0f
+    };
 
     // Солнце
     lighting.lights[SunLightIndex] = {
@@ -1005,14 +1258,17 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     lighting.lights[7] = { { 8,4,78,16}, {0,0,0,1}, {1.0f,.55f,.15f,9}, {}, {} };
     m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&lighting, sizeof(lighting))); // b0
     m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(0)); 
-    m_commandList->DrawInstanced(3, 1, 0, 0); 
+    // Full-screen quad строится в VS по SV_VertexID, поэтому vertex/index buffer не нужен.
+    m_commandList->IASetVertexBuffers(0, 0, nullptr);
+    m_commandList->IASetIndexBuffer(nullptr);
+    m_commandList->DrawInstanced(6, 1, 0, 0);
 
     backBarrier = TransitionBarrier(m_backBuffers[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);
     m_commandList->ResourceBarrier(1, &backBarrier);
     ThrowIfFailed(m_commandList->Close(), "Close frame command list");
 }
 
-void RenderingSystem::Render(const Camera& camera, float totalTime)
+void RenderingSystem::Render(const Camera& camera, float totalTime, float deltaTime)
 {
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex(); 
     WaitForFrame(m_frameIndex); 
@@ -1021,7 +1277,7 @@ void RenderingSystem::Render(const Camera& camera, float totalTime)
     UpdateLods(camera);
     UpdateVisibility(camera);
     UpdateShadowCascades(camera);
-    PopulateCommandList(camera, totalTime, refreshTessellation);
+    PopulateCommandList(camera, totalTime, deltaTime, refreshTessellation);
     ID3D12CommandList* lists[]{ m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists);
     if (refreshTessellation)

@@ -10,9 +10,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             Window hiddenWindow(instance, 640, 360, L"DX12 smoke test", false);
             Camera camera(640.0f / 360.0f);
             RenderingSystem renderer(hiddenWindow.Handle(), 640, 360);
-            renderer.Render(camera, 0.0f);
-            renderer.Render(camera, 0.0f); // Повторное использование сетки при неподвижной камере.
-            renderer.Render(camera, 1.0f); // При неизменной камере геометрия берётся из кеша.
+            renderer.Render(camera, 0.0f, 1.0f / 60.0f);
+            renderer.SetPostProcessMode(PostProcessMode::Grayscale);
+            renderer.Render(camera, 0.0f, 1.0f / 60.0f);
+            renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
+            renderer.Render(camera, 1.0f, 1.0f / 60.0f);
             return EXIT_SUCCESS;
         }
         Framework application(instance);

@@ -5,11 +5,11 @@
 #include "Octree.hpp"
 #include "Texture.hpp"
 
-enum class CullingMode
+enum class PostProcessMode : uint32_t
 {
-    Disabled,
-    Frustum,
-    Octree
+    None = 0,
+    Grayscale = 1,
+    SobelEdges = 2
 };
 
 class RenderingSystem
@@ -20,26 +20,21 @@ public:
     RenderingSystem(const RenderingSystem&) = delete;
     RenderingSystem& operator=(const RenderingSystem&) = delete;
 
-    void Render(const Camera& camera, float totalTime);
-    void SetCullingMode(CullingMode mode) { m_cullingMode = mode; }
-    void ToggleOctreeCulling()
-    {
-        m_cullingMode = m_cullingMode == CullingMode::Octree
-            ? CullingMode::Disabled : CullingMode::Octree;
-    }
-    bool IsOctreeCullingEnabled() const { return m_cullingMode == CullingMode::Octree; }
-    CullingMode GetCullingMode() const { return m_cullingMode; }
+    void Render(const Camera& camera, float totalTime, float deltaTime);
+    void SetPostProcessMode(PostProcessMode mode) { m_postProcessMode = mode; }
+    PostProcessMode GetPostProcessMode() const { return m_postProcessMode; }
     size_t VisibleObjectCount() const { return m_visibleIndices.size(); }
     size_t TotalObjectCount() const { return m_objects.size(); }
 
 private:
     static constexpr UINT FrameCount = 2; // Два back buffer чтобы CPU и GPU синхранизация
-    static constexpr UINT MaxLights = 16; // Должен совпадать с gLights в Lighting.hlsl
+    static constexpr UINT MaxLights = 16; // Должен совпадать с gLights в PostProcess.hlsl
     static constexpr UINT CascadeCount = 4;
     static constexpr UINT ShadowMapSize = 2048;
     static constexpr UINT64 ConstantsPerFrame = 4 * 1024 * 1024; // Отдельный участок upload-буфера на кадр.
     static constexpr UINT CachedVertexStride = 11 * sizeof(float);
     static constexpr UINT64 CachedVertexBufferBytes = 6ull * 64 * 64 * CachedVertexStride;
+    static constexpr UINT MaxParticles = 4096;
 
     enum class SceneMesh
     {
@@ -100,6 +95,7 @@ private:
         DirectX::XMFLOAT4 cascadeSplits;
         DirectX::XMFLOAT4 shadowParameters;
         DirectX::XMFLOAT4 cameraForward;
+        DirectX::XMFLOAT4 postProcessParameters;
         std::array<LightGpu, MaxLights> lights;
     };
 
@@ -110,6 +106,33 @@ private:
         DirectX::XMFLOAT4X4 lightViewProjection;
     };
 
+    // Должна совпадать с Particle в ParticleUpdate.hlsl и ParticleRender.hlsl.
+    struct alignas(16) ParticleGpu
+    {
+        DirectX::XMFLOAT3 position;
+        float padding0;
+        DirectX::XMFLOAT3 velocity;
+        float padding1;
+    };
+
+    struct alignas(16) ParticleSimulationConstants
+    {
+        float deltaTime;
+        float totalTime;
+        UINT particleCount;
+        float padding;
+        DirectX::XMFLOAT3 emitterPosition;
+        float fallSpeed;
+    };
+
+    struct alignas(16) ParticleDrawConstants
+    {
+        DirectX::XMFLOAT4X4 viewProjection;
+        DirectX::XMFLOAT4 cameraRight;
+        DirectX::XMFLOAT4 cameraUp;
+        DirectX::XMFLOAT4 colorAndSize;
+    };
+
     void CreateDeviceAndSwapChain(HWND window);
     void CreateDescriptors();
     void CreateRootSignatures();
@@ -117,6 +140,7 @@ private:
     void CreateShadowResources();
     void CreateConstantUpload();
     void CreateTessellationCache();
+    void CreateParticleResources();
     void LoadAssets();
     void BuildScene();
     const Mesh& MeshFor(const SceneObject& object) const;
@@ -124,9 +148,12 @@ private:
     void UpdateVisibility(const Camera& camera);
     void UpdateShadowCascades(const Camera& camera);
     void RenderShadowMaps(const Camera& camera, float totalTime);
-    void PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation);
+    void PopulateCommandList(const Camera& camera, float totalTime, float deltaTime,
+                             bool refreshTessellation);
     void UpdateTessellationCache(const Camera& camera, float totalTime);
     void DrawCachedTessellation(const ObjectConstants& constants);
+    void UpdateParticles(float deltaTime);
+    void DrawParticles(const Camera& camera);
     D3D12_GPU_VIRTUAL_ADDRESS UploadConstants(const void* data, size_t size);
     ComPtr<ID3DBlob> CompileShader(const std::filesystem::path& file,
                                   const char* entry, const char* target) const;
@@ -167,6 +194,10 @@ private:
     ComPtr<ID3D12PipelineState> m_tessDrawArgsPso;
     ComPtr<ID3D12RootSignature> m_tessDrawArgsRootSignature;
     ComPtr<ID3D12CommandSignature> m_tessDrawCommandSignature;
+    ComPtr<ID3D12RootSignature> m_particleComputeRootSignature;
+    ComPtr<ID3D12RootSignature> m_particleDrawRootSignature;
+    ComPtr<ID3D12PipelineState> m_particleComputePso;
+    ComPtr<ID3D12PipelineState> m_particleDrawPso;
 
     ComPtr<ID3D12Resource> m_shadowMap; 
     ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap;//на каждый каскад для записи глубины
@@ -189,6 +220,17 @@ private:
     ComPtr<ID3D12Resource> m_cachedTessDrawArgs;
     D3D12_VERTEX_BUFFER_VIEW m_cachedTessVertexView{};
 
+    std::array<ComPtr<ID3D12Resource>, 2> m_particleBuffers;
+    std::array<ComPtr<ID3D12Resource>, 2> m_particleCounters;
+    std::array<D3D12_RESOURCE_STATES, 2> m_particleBufferStates{
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    };
+    ComPtr<ID3D12Resource> m_particleInitialUpload;
+    ComPtr<ID3D12Resource> m_particleCounterUpload;
+    UINT m_particleReadBuffer = 0;
+    float m_particleTime = 0.0f;
+
     ComPtr<ID3D12Fence> m_fence; 
     HANDLE m_fenceEvent = nullptr;
     UINT64 m_nextFenceValue = 0;
@@ -208,5 +250,5 @@ private:
     std::vector<SceneBounds> m_sceneBounds;
     std::vector<uint32_t> m_visibleIndices;
     std::unique_ptr<Octree> m_octree;
-    CullingMode m_cullingMode = CullingMode::Octree;
+    PostProcessMode m_postProcessMode = PostProcessMode::None;
 };

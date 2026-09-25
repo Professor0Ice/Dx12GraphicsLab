@@ -34,7 +34,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="shader\Geometry.hlsl"><Filter>Shaders</Filter></None>
+    <None Include="shader\FullscreenQuad.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\Lighting.hlsl"><Filter>Shaders</Filter></None>
+    <None Include="shader\PostProcess.hlsl"><Filter>Shaders</Filter></None>
+    <None Include="shader\ParticleRender.hlsl"><Filter>Shaders</Filter></None>
+    <None Include="shader\ParticleUpdate.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\Shadow.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\ShadowTessellation.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\Tessellation.hlsl"><Filter>Shaders</Filter></None>

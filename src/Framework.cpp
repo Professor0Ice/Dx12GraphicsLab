@@ -20,10 +20,9 @@ int Framework::Run()
         m_timer.Tick();
         if (m_input.WasPressed(VK_ESCAPE))
             m_input.SetMouseCaptured(false);
-        if (m_input.WasPressed('1')) m_renderer.SetCullingMode(CullingMode::Disabled);
-        if (m_input.WasPressed('2')) m_renderer.SetCullingMode(CullingMode::Frustum);
-        if (m_input.WasPressed('3')) m_renderer.SetCullingMode(CullingMode::Octree);
-        if (m_input.WasPressed('O')) m_renderer.ToggleOctreeCulling();
+        if (m_input.WasPressed('1')) m_renderer.SetPostProcessMode(PostProcessMode::None);
+        if (m_input.WasPressed('2')) m_renderer.SetPostProcessMode(PostProcessMode::Grayscale);
+        if (m_input.WasPressed('3')) m_renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
         if (m_input.WasPressed('T')) m_textureAnimationEnabled = not m_textureAnimationEnabled;
 
         if (m_textureAnimationEnabled)
@@ -31,7 +30,7 @@ int Framework::Run()
 
         const auto mouse = m_input.ConsumeMouseDelta();
         m_camera.Update(m_input, mouse, m_timer.DeltaSeconds());
-        m_renderer.Render(m_camera, m_textureAnimationTime); 
+        m_renderer.Render(m_camera, m_textureAnimationTime, m_timer.DeltaSeconds());
         UpdateWindowTitle(m_timer.DeltaSeconds());
         m_input.EndFrame();
     }
@@ -46,12 +45,11 @@ void Framework::UpdateWindowTitle(float deltaTime)
 
     int fps = static_cast<int>(1.0f / deltaTime);
 
-    const wchar_t* mode = L"Octree";
-    if (m_renderer.GetCullingMode() == CullingMode::Disabled) mode = L"Disabled";
-    else if (m_renderer.GetCullingMode() == CullingMode::Frustum) mode = L"Frustum";
+    const wchar_t* effect = L"None";
+    if (m_renderer.GetPostProcessMode() == PostProcessMode::Grayscale) effect = L"Grayscale";
+    else if (m_renderer.GetPostProcessMode() == PostProcessMode::SobelEdges) effect = L"Sobel edges";
     std::wstringstream title;
-    title << L"KG is pain / Octree culling [O]: "
-          << (m_renderer.IsOctreeCullingEnabled() ? L"ON" : L"OFF") << L" / mode: " << mode
+    title << L"KG is pain / Post FX [1/2/3]: " << effect << L" / culling: Octree"
           << L" / visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount()
           << L" / FPS " << fps;
     m_window.SetTitle(title.str());
