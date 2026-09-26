@@ -126,7 +126,6 @@ RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
     ID3D12CommandList* lists[]{ m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists); 
     FlushGpu(); 
-    m_particleInitialUpload.Reset();
 }
 
 RenderingSystem::~RenderingSystem()
@@ -443,6 +442,7 @@ void RenderingSystem::CreatePipelineStates()
     const auto cachedTessVs = CompileShader(m_runtimeDirectory / L"shader/Tessellation.hlsl", "CachedVS", "vs_5_1");
     const auto shadowVs = CompileShader(m_runtimeDirectory / L"shader/Shadow.hlsl", "VSMain", "vs_5_1");
     const auto cachedShadowVs = CompileShader(m_runtimeDirectory / L"shader/ShadowTessellation.hlsl", "CachedVS", "vs_5_1");
+    const auto particleInitializeCs = CompileShader(m_runtimeDirectory / L"shader/ParticleUpdate.hlsl", "CSInitialize", "cs_5_1");
     const auto particleCs = CompileShader(m_runtimeDirectory / L"shader/ParticleUpdate.hlsl", "CSMain", "cs_5_1");
     const auto particleVs = CompileShader(m_runtimeDirectory / L"shader/ParticleRender.hlsl", "VSMain", "vs_5_1");
     const auto particleGs = CompileShader(m_runtimeDirectory / L"shader/ParticleRender.hlsl", "GSMain", "gs_5_1");
@@ -565,6 +565,12 @@ void RenderingSystem::CreatePipelineStates()
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&cachedShadow,
         IID_PPV_ARGS(&m_cachedShadowPso)), "Create cached tessellation shadow PSO");
 
+    D3D12_COMPUTE_PIPELINE_STATE_DESC particleInitialize{};
+    particleInitialize.pRootSignature = m_particleComputeRootSignature.Get();
+    particleInitialize.CS = { particleInitializeCs->GetBufferPointer(), particleInitializeCs->GetBufferSize() };
+    ThrowIfFailed(m_device->CreateComputePipelineState(&particleInitialize,
+        IID_PPV_ARGS(&m_particleInitializePso)), "Create particle initialization PSO");
+
     D3D12_COMPUTE_PIPELINE_STATE_DESC particleCompute{};
     particleCompute.pRootSignature = m_particleComputeRootSignature.Get();
     particleCompute.CS = { particleCs->GetBufferPointer(), particleCs->GetBufferSize() };
@@ -672,57 +678,23 @@ void RenderingSystem::CreateParticleResources()
 
     auto particleDesc = BufferDescription(particleBytes);
     particleDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDesc,D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_particleBuffers[0])),"Create first particle buffer");
+    ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDesc,D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_particleBuffers[0])),"Create first particle buffer");
     ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDesc,D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_particleBuffers[1])),"Create second particle buffer");
-    auto uploadDesc = BufferDescription(particleBytes);
-    ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_particleInitialUpload)),"Create particle initialization upload buffer");
-
-    std::vector<ParticleGpu> initialParticles(MaxParticles);
-    uint32_t randomState = 0x83a49c17u;
-    auto random01 = [&]()
-    {
-        randomState = randomState * 1664525u + 1013904223u;
-        return (randomState >> 8) * (1.0f / 16777216.0f);
-    };
-
-    constexpr XMFLOAT3 emitter{ 0.0f, 12.0f, 8.0f };
-    constexpr float fallSpeed = 6.0f;
-    for (ParticleGpu& particle : initialParticles)
-    {
-        particle.position = {
-            emitter.x + (random01() - 0.5f) * 14.0f,
-            0.5f + random01() * (emitter.y - 0.5f),
-            emitter.z + (random01() - 0.5f) * 20.0f
-        };
-        particle.padding0 = 0.0f;
-        particle.velocity = { 0.0f, -fallSpeed, 0.0f };
-        particle.padding1 = 0.0f;
-    }
-
-    void* mappedParticles = nullptr;
-    const D3D12_RANGE noCpuReads{ 0, 0 };
-    ThrowIfFailed(m_particleInitialUpload->Map(0, &noCpuReads, &mappedParticles),"Map particle initialization buffer");
-    memcpy(mappedParticles, initialParticles.data(), static_cast<size_t>(particleBytes));
-    const D3D12_RANGE particleWriteRange{ 0, static_cast<SIZE_T>(particleBytes) };
-    m_particleInitialUpload->Unmap(0, &particleWriteRange);
-    m_commandList->CopyBufferRegion(m_particleBuffers[0].Get(), 0, m_particleInitialUpload.Get(), 0, particleBytes);
-    auto particlesToUav = TransitionBarrier(m_particleBuffers[0].Get(),D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    m_commandList->ResourceBarrier(1, &particlesToUav);
 
     auto counterDesc = BufferDescription(sizeof(UINT));
     counterDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     for (auto& counter : m_particleCounters)
         ThrowIfFailed(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc,D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&counter)),"Create particle UAV counter");
 
-    auto counterUploadDesc = BufferDescription(2 * sizeof(UINT));
+    auto counterUploadDesc = BufferDescription(sizeof(UINT));
     ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc,D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_particleCounterUpload)),"Create particle counter upload buffer");
     void* mappedCounters = nullptr;
+    const D3D12_RANGE noCpuReads{ 0, 0 };
     ThrowIfFailed(m_particleCounterUpload->Map(0, &noCpuReads, &mappedCounters), "Map particle counter upload");
-    const std::array<UINT, 2> counterValues{ 0u, MaxParticles };
-    memcpy(mappedCounters, counterValues.data(), sizeof(counterValues));
-    const D3D12_RANGE counterWriteRange{ 0, sizeof(counterValues) };
+    *static_cast<UINT*>(mappedCounters) = 0;
+    const D3D12_RANGE counterWriteRange{ 0, sizeof(UINT) };
     m_particleCounterUpload->Unmap(0, &counterWriteRange);
-    m_commandList->CopyBufferRegion(m_particleCounters[0].Get(), 0,m_particleCounterUpload.Get(), sizeof(UINT), sizeof(UINT));
+    m_commandList->CopyBufferRegion(m_particleCounters[0].Get(), 0,m_particleCounterUpload.Get(), 0, sizeof(UINT));
     m_commandList->CopyBufferRegion(m_particleCounters[1].Get(), 0,m_particleCounterUpload.Get(), 0, sizeof(UINT));
     std::array<D3D12_RESOURCE_BARRIER, 2> countersToUav{
         TransitionBarrier(m_particleCounters[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -738,10 +710,9 @@ void RenderingSystem::CreateParticleResources()
         uav.Buffer.NumElements = MaxParticles;
         uav.Buffer.StructureByteStride = sizeof(ParticleGpu);
         uav.Buffer.CounterOffsetInBytes = 0;
-        m_device->CreateUnorderedAccessView(m_particleBuffers[bufferIndex].Get(),
-            m_particleCounters[bufferIndex].Get(), &uav, CpuSrv(descriptorIndex));
+        m_device->CreateUnorderedAccessView(m_particleBuffers[bufferIndex].Get(),m_particleCounters[bufferIndex].Get(), &uav, CpuSrv(descriptorIndex));
     };
-    // Две непрерывные таблицы UAV позволяют менять роли Consume/Append без копирования дескрипторов.
+
     createUav(0, 10);
     createUav(1, 11);
     createUav(1, 12);
@@ -755,6 +726,23 @@ void RenderingSystem::CreateParticleResources()
     srv.Buffer.StructureByteStride = sizeof(ParticleGpu);
     m_device->CreateShaderResourceView(m_particleBuffers[0].Get(), &srv, CpuSrv(14));
     m_device->CreateShaderResourceView(m_particleBuffers[1].Get(), &srv, CpuSrv(15));
+
+    ID3D12DescriptorHeap* heaps[]{ m_srvHeap.Get() };
+    m_commandList->SetDescriptorHeaps(1, heaps);
+    const ParticleSimulationConstants initialConstants{
+        0.0f, 0.0f, MaxParticles, 0.0f,
+        { 0.0f, 12.0f, 8.0f }, 6.0f
+    };
+    m_commandList->SetComputeRootSignature(m_particleComputeRootSignature.Get());
+    m_commandList->SetPipelineState(m_particleInitializePso.Get());
+    m_commandList->SetComputeRootConstantBufferView(0, UploadConstants(&initialConstants, sizeof(initialConstants)));
+    m_commandList->SetComputeRootDescriptorTable(1, GpuSrv(12));
+    m_commandList->Dispatch((MaxParticles + 63) / 64, 1, 1);
+
+    D3D12_RESOURCE_BARRIER initializedParticles{};
+    initializedParticles.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    initializedParticles.UAV.pResource = m_particleBuffers[0].Get();
+    m_commandList->ResourceBarrier(1, &initializedParticles);
 }
 
 void RenderingSystem::LoadAssets()
@@ -1137,7 +1125,7 @@ void RenderingSystem::UpdateParticles(float deltaTime)
 
     const ParticleSimulationConstants constants{
         simulationStep, m_particleTime, MaxParticles, 0.0f,
-        { 0.0f, 12.0f, 8.0f }, 9.0f
+        { 0.0f, 12.0f, 8.0f }, 6.0f
     };
     m_commandList->SetComputeRootSignature(m_particleComputeRootSignature.Get());
     m_commandList->SetPipelineState(m_particleComputePso.Get());

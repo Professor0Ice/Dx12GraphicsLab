@@ -198,6 +198,7 @@ private:
     ComPtr<ID3D12CommandSignature> m_tessDrawCommandSignature;
     ComPtr<ID3D12RootSignature> m_particleComputeRootSignature;
     ComPtr<ID3D12RootSignature> m_particleDrawRootSignature;
+    ComPtr<ID3D12PipelineState> m_particleInitializePso;
     ComPtr<ID3D12PipelineState> m_particleComputePso;
     ComPtr<ID3D12PipelineState> m_particleDrawPso;
 
@@ -228,7 +229,6 @@ private:
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS
     };
-    ComPtr<ID3D12Resource> m_particleInitialUpload;
     ComPtr<ID3D12Resource> m_particleCounterUpload;
     UINT m_particleReadBuffer = 0;
     float m_particleTime = 0.0f;

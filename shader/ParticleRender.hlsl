@@ -85,7 +85,6 @@ struct GBufferOutput
 GBufferOutput PSMain(GSOutput input)
 {
     GBufferOutput output;
-    // Мягкая круглая форма без alpha blending: отброшенные пиксели не меняют G-buffer.
     const float2 centeredUv = input.uv * 2.0f - 1.0f;
     clip(1.0f - dot(centeredUv, centeredUv));
     output.albedo = input.color;

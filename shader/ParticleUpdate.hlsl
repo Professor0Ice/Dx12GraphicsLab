@@ -19,7 +19,6 @@ cbuffer SimulationConstants : register(b0)
 ConsumeStructuredBuffer<Particle> gParticlesIn : register(u0);
 AppendStructuredBuffer<Particle> gParticlesOut : register(u1);
 
-// Детерминированный разброс капель по площади дождя.
 float Hash(uint value)
 {
     value ^= value >> 16;
@@ -43,6 +42,18 @@ Particle SpawnParticle(uint id)
     particle.velocity = float3(0.0f, -gFallSpeed, 0.0f);
     particle.padding1 = 0.0f;
     return particle;
+}
+
+[numthreads(64, 1, 1)]
+void CSInitialize(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x >= gParticleCount)
+        return;
+
+    Particle particle = SpawnParticle(dispatchThreadId.x);
+    particle.position.y = 0.5f + Hash(dispatchThreadId.x * 3u + 2u) *
+                          (gEmitterPosition.y - 0.5f);
+    gParticlesOut.Append(particle);
 }
 
 [numthreads(64, 1, 1)]
