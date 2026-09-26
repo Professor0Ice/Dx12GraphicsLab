@@ -6,6 +6,7 @@ cbuffer ObjectConstants : register(b0)
     float4 gCameraAndTime;
     float4 gUvParameters;
     float4 gMaterialColor;
+    float4 gMaterialParameters;
     float4 gTessellationParameters; 
 };
 
@@ -146,7 +147,8 @@ GBufferOutput PSMain(DomainOutput input)
     float3 mapNormal = gNormalMap.Sample(gSampler, input.uv).xyz * 2.0f - 1.0f;
     float3 worldNormal = normalize(mapNormal.x * t + mapNormal.y * b + mapNormal.z * n);
     output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor; // Цвет.
-    output.normal = float4(worldNormal, 48.0f); // Нормаль и более резкий specular.
-    output.position = float4(input.worldPosition, 0.55f); // Позиция и сила specular.
+    output.albedo.a = saturate(gMaterialParameters.z);
+    output.normal = float4(worldNormal, clamp(gMaterialParameters.y, 0.045f, 1.0f));
+    output.position = float4(input.worldPosition, saturate(gMaterialParameters.x));
     return output;
 }

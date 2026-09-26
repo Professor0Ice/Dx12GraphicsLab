@@ -6,6 +6,7 @@ cbuffer ObjectConstants : register(b0)
     float4 gCameraAndTime;              
     float4 gUvParameters;               
     float4 gMaterialColor;              
+    float4 gMaterialParameters; // x: metallic, y: perceptual roughness, z: AO.
     float4 gTessellationParameters;    
 };
 
@@ -68,7 +69,8 @@ GBufferOutput PSMain(VSOutput input)
     float3 worldNormal = normalize(tangentNormal.x * tangent + tangentNormal.y * bitangent +
                                    tangentNormal.z * geometricNormal);
     output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor; 
-    output.normal = float4(worldNormal, 32.0f);
-    output.position = float4(input.worldPosition, 0.42f);
+    output.albedo.a = saturate(gMaterialParameters.z);
+    output.normal = float4(worldNormal, clamp(gMaterialParameters.y, 0.045f, 1.0f));
+    output.position = float4(input.worldPosition, saturate(gMaterialParameters.x));
     return output;
 }

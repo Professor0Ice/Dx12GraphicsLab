@@ -5,6 +5,7 @@
     <Filter Include="Header Files"><UniqueIdentifier>{93995380-89BD-4B04-88EB-625FBE52EBFB}</UniqueIdentifier><Extensions>h;hpp</Extensions></Filter>
     <Filter Include="Shaders"><UniqueIdentifier>{B4F284B5-BA77-4672-9221-77B33FF7F28B}</UniqueIdentifier><Extensions>hlsl</Extensions></Filter>
     <Filter Include="Assets"><UniqueIdentifier>{D8D15EC3-5AA5-4C7E-A228-F54E9CF70E9A}</UniqueIdentifier></Filter>
+    <Filter Include="Tools"><UniqueIdentifier>{A3C56C80-7D9F-49CF-A5DC-08BF2C72B928}</UniqueIdentifier></Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Camera.cpp"><Filter>Source Files</Filter></ClCompile>
@@ -50,5 +51,9 @@
     <None Include="assets\checker.ppm"><Filter>Assets</Filter></None>
     <None Include="assets\normal.ppm"><Filter>Assets</Filter></None>
     <None Include="assets\displacement.ppm"><Filter>Assets</Filter></None>
+    <None Include="assets\ibl_brdf_lut.dds"><Filter>Assets</Filter></None>
+    <None Include="assets\ibl_irradiance.dds"><Filter>Assets</Filter></None>
+    <None Include="assets\ibl_prefiltered.dds"><Filter>Assets</Filter></None>
+    <None Include="tools\generate_ibl_assets.py"><Filter>Tools</Filter></None>
   </ItemGroup>
 </Project>

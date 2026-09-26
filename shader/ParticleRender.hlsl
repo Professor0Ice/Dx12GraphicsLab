@@ -89,7 +89,7 @@ GBufferOutput PSMain(GSOutput input)
     const float2 centeredUv = input.uv * 2.0f - 1.0f;
     clip(1.0f - dot(centeredUv, centeredUv));
     output.albedo = input.color;
-    output.normal = float4(normalize(input.normal), 8.0f);
+    output.normal = float4(normalize(input.normal), 0.28f);
     output.position = float4(input.worldPosition, 0.0f);
     return output;
 }

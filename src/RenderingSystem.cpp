@@ -87,6 +87,22 @@ namespace
         sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         return sampler;
     }
+
+    D3D12_STATIC_SAMPLER_DESC IblSampler()
+    {
+        D3D12_STATIC_SAMPLER_DESC sampler{};
+        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+        sampler.MinLOD = 0.0f;
+        sampler.MaxLOD = D3D12_FLOAT32_MAX;
+        sampler.ShaderRegister = 2; // register(s2).
+        sampler.RegisterSpace = 0;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        return sampler;
+    }
 }
 
 RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height)
@@ -197,7 +213,7 @@ void RenderingSystem::CreateDescriptors()
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDesc{};
     srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    srvDesc.NumDescriptors = 16;
+    srvDesc.NumDescriptors = 19;
     srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_srvHeap)), "Create SRV heap");
     m_srvIncrement = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -287,25 +303,30 @@ void RenderingSystem::CreateRootSignatures()
         throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
     ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
 
-    // Освещение читает три текстуры G-buffer и следующий за ними SRV массива теней.
-    D3D12_DESCRIPTOR_RANGE lightingRange{};
-    lightingRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    lightingRange.NumDescriptors = GBuffer::TargetCount + 1;
-    lightingRange.BaseShaderRegister = 0;
-    lightingRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    // t0-t3 находятся в начале heap, а заранее рассчитанные IBL-карты лежат в
+    // слотах 16-18, не пересекаясь с таблицами материалов и частиц.
+    std::array<D3D12_DESCRIPTOR_RANGE, 2> lightingRanges{};
+    lightingRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRanges[0].NumDescriptors = GBuffer::TargetCount + 1;
+    lightingRanges[0].BaseShaderRegister = 0;
+    lightingRanges[0].OffsetInDescriptorsFromTableStart = 0;
+    lightingRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRanges[1].NumDescriptors = 3;
+    lightingRanges[1].BaseShaderRegister = 4;
+    lightingRanges[1].OffsetInDescriptorsFromTableStart = 16;
     std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
     lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     lightingParams[0].Descriptor.ShaderRegister = 0;
     lightingParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     lightingParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    lightingParams[1].DescriptorTable.NumDescriptorRanges = 1;
-    lightingParams[1].DescriptorTable.pDescriptorRanges = &lightingRange;
+    lightingParams[1].DescriptorTable.NumDescriptorRanges = static_cast<UINT>(lightingRanges.size());
+    lightingParams[1].DescriptorTable.pDescriptorRanges = lightingRanges.data();
     lightingParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     D3D12_ROOT_SIGNATURE_DESC lightingDesc{};
     lightingDesc.NumParameters = static_cast<UINT>(lightingParams.size());
     lightingDesc.pParameters = lightingParams.data();
-    const std::array<D3D12_STATIC_SAMPLER_DESC, 2> lightingSamplers{
-        sampler, ShadowComparisonSampler()
+    const std::array<D3D12_STATIC_SAMPLER_DESC, 3> lightingSamplers{
+        sampler, ShadowComparisonSampler(), IblSampler()
     };
     lightingDesc.NumStaticSamplers = static_cast<UINT>(lightingSamplers.size());
     lightingDesc.pStaticSamplers = lightingSamplers.data();
@@ -749,11 +770,20 @@ void RenderingSystem::LoadAssets()
     m_gatoTexture.LoadPpm(m_device.Get(), m_commandList.Get(), m_runtimeDirectory / L"assets/Gato.ppm", CpuSrv(7));
     m_device->CopyDescriptorsSimple(1, CpuSrv(8), CpuSrv(5), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->CopyDescriptorsSimple(1, CpuSrv(9), CpuSrv(6), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_irradianceMap.LoadDds(m_device.Get(), m_commandList.Get(),
+                            m_runtimeDirectory / L"assets/ibl_irradiance.dds", CpuSrv(16));
+    m_prefilteredEnvironmentMap.LoadDds(m_device.Get(), m_commandList.Get(),
+                                        m_runtimeDirectory / L"assets/ibl_prefiltered.dds", CpuSrv(17));
+    m_brdfIntegrationMap.LoadDds(m_device.Get(), m_commandList.Get(),
+                                 m_runtimeDirectory / L"assets/ibl_brdf_lut.dds", CpuSrv(18));
 }
 
 void RenderingSystem::BuildScene()
 {
-    auto addCube = [&](XMFLOAT3 position, XMFLOAT3 scale, XMFLOAT4 color,SceneMesh mesh = SceneMesh::Cube, float yaw = 0.0f,XMFLOAT4 uvParameters = XMFLOAT4{ 2.0f, 2.0f, 0.06f, 0.025f })
+    auto addCube = [&](XMFLOAT3 position, XMFLOAT3 scale, XMFLOAT4 color,
+                       SceneMesh mesh = SceneMesh::Cube, float yaw = 0.0f,
+                       XMFLOAT4 uvParameters = XMFLOAT4{ 2.0f, 2.0f, 0.06f, 0.025f },
+                       XMFLOAT4 materialParameters = XMFLOAT4{ 0.0f, 0.65f, 1.0f, 0.0f })
     {
         SceneObject object;
         XMMATRIX world = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixRotationY(yaw) *XMMatrixTranslation(position.x, position.y, position.z);
@@ -764,6 +794,7 @@ void RenderingSystem::BuildScene()
         object.bounds.Extents.x = horizontalRadius;
         object.bounds.Extents.z = horizontalRadius;
         object.color = color;
+        object.materialParameters = materialParameters;
         object.uvParameters = uvParameters;
         object.textureTableStart = mesh == SceneMesh::Gato ? 7u : 4u;
         m_objects.push_back(object);
@@ -780,9 +811,10 @@ void RenderingSystem::BuildScene()
         addCube({ -9,3.5f,zz }, { 1.0f,7.0f,1.0f }, { .7f,.65f,.52f,1 });
         addCube({  9,3.5f,zz }, { 1.0f,7.0f,1.0f }, { .7f,.65f,.52f,1 });
     }
-    addCube({ 0,1.1f,8 }, { 2.2f,2.2f,2.2f }, { .8f,.45f,.18f,1 }, SceneMesh::Showcase);
+    addCube({ 0,1.1f,8 }, { 2.2f,2.2f,2.2f }, { .8f,.45f,.18f,1 },
+            SceneMesh::Showcase, 0.0f, { 2.0f,2.0f,.06f,.025f }, { .72f,.22f,1.0f,0.0f });
     addCube({ 4.5f,-.13f,9 }, { .09f,.09f,.09f }, { 1,1,1,1 },
-              SceneMesh::Gato, XM_PI, { 1,1,0.04f,0.02f });
+              SceneMesh::Gato, XM_PI, { 1,1,0.04f,0.02f }, { .0f,.4f,1.0f,0.0f });
 
     uint32_t state = 0x12345678u;
     auto random01 = [&]() { state = state * 1664525u + 1013904223u; return (state >> 8) * (1.0f / 16777216.0f); };
@@ -973,6 +1005,7 @@ void RenderingSystem::UpdateTessellationCache(const Camera& camera, float totalT
     constants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
     constants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
     constants.materialColor = { .45f, .7f, .9f, 1.0f };
+    constants.materialParameters = { .1f, .32f, 1.0f, 0.0f };
     constants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
     m_commandList->SetGraphicsRootConstantBufferView(0, UploadConstants(&constants, sizeof(constants)));
     m_commandList->DrawIndexedInstanced(m_tessellationMesh.IndexCount(), 1, 0, 0, 0);
@@ -1049,6 +1082,7 @@ void RenderingSystem::RenderShadowMaps(const Camera& camera, float totalTime)
         tessConstants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
         tessConstants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
         tessConstants.materialColor = { 1,1,1,1 };
+        tessConstants.materialParameters = { .1f,.32f,1.0f,0.0f };
         tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
         DrawCachedTessellation(tessConstants);
     }
@@ -1180,6 +1214,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
         XMStoreFloat4x4(&constants.viewProjection, viewProjection);
         constants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
         constants.uvParameters = object.uvParameters;
+        constants.materialParameters = object.materialParameters;
         constants.tessellationParameters = { 1, 1, 1, 1 };
         const Mesh& sourceMesh = MeshFor(object);
         const Mesh& mesh = isSprite ? m_billboardMesh : sourceMesh;
@@ -1209,6 +1244,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     tessConstants.cameraAndTime = { cameraPosition.x, cameraPosition.y, cameraPosition.z, totalTime };
     tessConstants.uvParameters = { 6.0f, 6.0f, 0.03f, 0.0f };
     tessConstants.materialColor = { .45f,.7f,.9f,1 };
+    tessConstants.materialParameters = { .1f,.32f,1.0f,0.0f };
     tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
     DrawCachedTessellation(tessConstants);
     DrawParticles(camera);
@@ -1228,7 +1264,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     XMStoreFloat4x4(&lighting.inverseViewProjection, XMMatrixInverse(nullptr, viewProjection));
     lighting.shadowViewProjections = m_shadowViewProjections;
     lighting.cameraAndLightCount = { cameraPosition.x, cameraPosition.y, cameraPosition.z, 8.0f }; 
-    lighting.ambient = { .05f, .05f, .05f, 1.0f }; // Фоновый свет.
+    lighting.iblParameters = { 4.0f, 1.0f, 1.0f, 0.0f };
     lighting.cascadeSplits = m_cascadeSplits;
     lighting.shadowParameters = { 1.0f / static_cast<float>(ShadowMapSize), 0.00035f, 0.0025f, 0.0f };
     const XMFLOAT3 cameraForward = camera.Direction();

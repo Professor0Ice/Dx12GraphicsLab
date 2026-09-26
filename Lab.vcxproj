@@ -132,6 +132,10 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <None Include="assets\checker.ppm" />
     <None Include="assets\normal.ppm" />
     <None Include="assets\displacement.ppm" />
+    <None Include="assets\ibl_brdf_lut.dds" />
+    <None Include="assets\ibl_irradiance.dds" />
+    <None Include="assets\ibl_prefiltered.dds" />
+    <None Include="tools\generate_ibl_assets.py" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

@@ -57,6 +57,7 @@ private:
         DirectX::XMFLOAT4X4 spriteWorld{};
         DirectX::BoundingBox bounds{}; // Границы объекта для отсечения невидимых объектов.
         DirectX::XMFLOAT4 color{ 1, 1, 1, 1 }; // Множитель цвета материала RGBA.
+        DirectX::XMFLOAT4 materialParameters{ 0.0f, 0.65f, 1.0f, 0.0f }; // metallic, roughness, AO.
         DirectX::XMFLOAT4 uvParameters{ 2.0f, 2.0f, 0.06f, 0.025f }; // Масштаб 
         SceneMesh mesh = SceneMesh::Cube;
         LodLevel lod = LodLevel::Mesh;
@@ -72,6 +73,7 @@ private:
         DirectX::XMFLOAT4 cameraAndTime;
         DirectX::XMFLOAT4 uvParameters;
         DirectX::XMFLOAT4 materialColor;
+        DirectX::XMFLOAT4 materialParameters;
         DirectX::XMFLOAT4 tessellationParameters;
     };
 
@@ -91,7 +93,7 @@ private:
         DirectX::XMFLOAT4X4 inverseViewProjection;
         std::array<DirectX::XMFLOAT4X4, CascadeCount> shadowViewProjections;
         DirectX::XMFLOAT4 cameraAndLightCount;
-        DirectX::XMFLOAT4 ambient;
+        DirectX::XMFLOAT4 iblParameters; // max prefiltered mip, IBL intensity, exposure.
         DirectX::XMFLOAT4 cascadeSplits;
         DirectX::XMFLOAT4 shadowParameters;
         DirectX::XMFLOAT4 cameraForward;
@@ -246,6 +248,9 @@ private:
     Texture m_normalTexture;
     Texture m_displacementTexture;
     Texture m_gatoTexture;
+    Texture m_irradianceMap;
+    Texture m_brdfIntegrationMap;
+    Texture m_prefilteredEnvironmentMap;
     std::vector<SceneObject> m_objects;
     std::vector<SceneBounds> m_sceneBounds;
     std::vector<uint32_t> m_visibleIndices;
