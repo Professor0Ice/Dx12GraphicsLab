@@ -29,6 +29,7 @@ Texture2DArray gShadowMap : register(t3);
 TextureCube gIrradianceMap : register(t4);
 TextureCube gPrefilteredEnvironmentMap : register(t5);
 Texture2D gBrdfIntegrationMap : register(t6);
+Texture2D<uint> gStencil : register(t7);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 SamplerState gIblSampler : register(s2);
@@ -119,15 +120,6 @@ uint SelectShadowCascade(float3 worldPosition)
     cascade = viewDepth > gCascadeSplits.z ? 3u : cascade;
     return cascade;
 }
-
-float3 ShadowCascadeDebugColor(uint cascade)
-{
-    if (cascade == 0u) return float3(1.00f, 0.10f, 0.10f);
-    if (cascade == 1u) return float3(0.10f, 1.00f, 0.20f);
-    if (cascade == 2u) return float3(0.90f, 0.30f, 1.00f);
-    return float3(.0f, 0.85f, 0.10f);
-}
-
 
 float EvaluateDirectionalShadow(float3 worldPosition, float3 normal)
 {

@@ -9,8 +9,7 @@ enum class PostProcessMode : uint32_t
 {
     None = 0,
     Grayscale = 1,
-    SobelEdges = 2,
-    ShadowCascades = 3
+    SobelEdges = 2
 };
 
 class RenderingSystem
@@ -63,6 +62,7 @@ private:
         SceneMesh mesh = SceneMesh::Cube;
         LodLevel lod = LodLevel::Mesh;
         UINT textureTableStart = 4; // Первый SRV текстур объекта в общей таблице дескрипторов.
+        UINT stencilReference = 0; // 1 помечает зелёный объект для цветной post-process обводки.
     };
 
     // Данные одного объекта в точности повторяют cbuffer ObjectConstants в HLSL.
@@ -291,5 +291,5 @@ private:
     std::vector<SceneBounds> m_sceneBounds;
     std::vector<uint32_t> m_visibleIndices;
     std::unique_ptr<Octree> m_octree;
-    PostProcessMode m_postProcessMode = PostProcessMode::ShadowCascades;
+    PostProcessMode m_postProcessMode = PostProcessMode::None;
 };

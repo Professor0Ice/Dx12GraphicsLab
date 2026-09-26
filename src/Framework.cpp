@@ -23,7 +23,6 @@ int Framework::Run()
         if (m_input.WasPressed('1')) m_renderer.SetPostProcessMode(PostProcessMode::None);
         if (m_input.WasPressed('2')) m_renderer.SetPostProcessMode(PostProcessMode::Grayscale);
         if (m_input.WasPressed('3')) m_renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
-        if (m_input.WasPressed('4')) m_renderer.SetPostProcessMode(PostProcessMode::ShadowCascades);
         if (m_input.WasPressed('T')) m_textureAnimationEnabled = not m_textureAnimationEnabled;
 
         if (m_textureAnimationEnabled)
@@ -49,9 +48,8 @@ void Framework::UpdateWindowTitle(float deltaTime)
     const wchar_t* effect = L"None";
     if (m_renderer.GetPostProcessMode() == PostProcessMode::Grayscale) effect = L"Grayscale";
     else if (m_renderer.GetPostProcessMode() == PostProcessMode::SobelEdges) effect = L"Sobel edges";
-    else if (m_renderer.GetPostProcessMode() == PostProcessMode::ShadowCascades) effect = L"Shadow cascades";
     std::wstringstream title;
-    title << L"KG is pain / Post FX [1/2/3/4]: " << effect << L" / culling: Octree"
+    title << L"KG is pain / Post FX [1/2/3]: " << effect << L" / culling: Octree"
           << L" / visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount()
           << L" / FPS " << fps;
     m_window.SetTitle(title.str());

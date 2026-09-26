@@ -51,6 +51,20 @@ namespace
         return result;
     }
 
+    D3D12_DEPTH_STENCIL_DESC SceneDepthStencil()
+    {
+        D3D12_DEPTH_STENCIL_DESC result = DefaultDepth();
+        result.StencilEnable = TRUE;
+        result.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+        result.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+        result.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+        result.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+        result.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+        result.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+        result.BackFace = result.FrontFace;
+        return result;
+    }
+
     D3D12_STATIC_SAMPLER_DESC AnisotropicSampler()
     {
         // Правила чтения текстур
@@ -212,11 +226,11 @@ void RenderingSystem::CreateDescriptors()
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDesc{};
     srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    srvDesc.NumDescriptors = 27;
+    srvDesc.NumDescriptors = 28;
     srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_srvHeap)), "Create SRV heap");
     m_srvIncrement = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    m_gbuffer.Initialize(m_device.Get(), m_width, m_height, CpuSrv(0), m_srvIncrement);
+    m_gbuffer.Initialize(m_device.Get(), m_width, m_height, CpuSrv(0), m_srvIncrement, CpuSrv(27));
     CreateShadowResources();
 }
 
@@ -302,9 +316,9 @@ void RenderingSystem::CreateRootSignatures()
         throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Root signature error");
     ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),IID_PPV_ARGS(&m_geometryRootSignature)), "Create geometry root signature");
 
-    // t0-t3 находятся в начале heap, а заранее рассчитанные IBL-карты лежат в
-    // слотах 16-18, не пересекаясь с таблицами материалов и частиц.
-    std::array<D3D12_DESCRIPTOR_RANGE, 2> lightingRanges{};
+    // t0-t3 находятся в начале heap, IBL-карты лежат в слотах 16-18,
+    // а stencil SRV для post-process — в слоте 27 и доступен как t7.
+    std::array<D3D12_DESCRIPTOR_RANGE, 3> lightingRanges{};
     lightingRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     lightingRanges[0].NumDescriptors = GBuffer::TargetCount + 1;
     lightingRanges[0].BaseShaderRegister = 0;
@@ -313,6 +327,10 @@ void RenderingSystem::CreateRootSignatures()
     lightingRanges[1].NumDescriptors = 3;
     lightingRanges[1].BaseShaderRegister = 4;
     lightingRanges[1].OffsetInDescriptorsFromTableStart = 16;
+    lightingRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    lightingRanges[2].NumDescriptors = 1;
+    lightingRanges[2].BaseShaderRegister = 7;
+    lightingRanges[2].OffsetInDescriptorsFromTableStart = 27;
     std::array<D3D12_ROOT_PARAMETER, 2> lightingParams{};
     lightingParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     lightingParams[0].Descriptor.ShaderRegister = 0;
@@ -527,12 +545,12 @@ void RenderingSystem::CreatePipelineStates()
     geometry.BlendState = DefaultBlend();
     geometry.SampleMask = UINT_MAX;
     geometry.RasterizerState = DefaultRasterizer();
-    geometry.DepthStencilState = DefaultDepth();
+    geometry.DepthStencilState = SceneDepthStencil();
     geometry.InputLayout = { inputLayout, static_cast<UINT>(std::size(inputLayout)) };
     geometry.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // PSO ожидает треугольники.
     geometry.NumRenderTargets = GBuffer::TargetCount; 
     for (UINT i = 0; i < GBuffer::TargetCount; ++i) geometry.RTVFormats[i] = m_gbuffer.Formats()[i];
-    geometry.DSVFormat = DXGI_FORMAT_D32_FLOAT; 
+    geometry.DSVFormat = GBuffer::DepthStencilFormat;
     geometry.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&geometry, IID_PPV_ARGS(&m_geometryPso)),"Create geometry PSO");
 
@@ -668,12 +686,12 @@ void RenderingSystem::CreatePipelineStates()
     particleDraw.SampleMask = UINT_MAX;
     particleDraw.RasterizerState = DefaultRasterizer();
     particleDraw.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-    particleDraw.DepthStencilState = DefaultDepth();
+    particleDraw.DepthStencilState = SceneDepthStencil();
     particleDraw.InputLayout = { nullptr, 0 };
     particleDraw.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
     particleDraw.NumRenderTargets = GBuffer::TargetCount;
     for (UINT i = 0; i < GBuffer::TargetCount; ++i) particleDraw.RTVFormats[i] = m_gbuffer.Formats()[i];
-    particleDraw.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    particleDraw.DSVFormat = GBuffer::DepthStencilFormat;
     particleDraw.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&particleDraw,
         IID_PPV_ARGS(&m_particleDrawPso)), "Create particle draw PSO");
@@ -693,6 +711,7 @@ void RenderingSystem::CreatePipelineStates()
     transparentParticleDraw.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
     transparentParticleDraw.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     transparentParticleDraw.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    transparentParticleDraw.DepthStencilState.StencilEnable = FALSE;
     transparentParticleDraw.NumRenderTargets = 1;
     transparentParticleDraw.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
     transparentParticleDraw.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
@@ -946,6 +965,8 @@ void RenderingSystem::BuildScene()
         object.bounds.Extents.x = horizontalRadius;
         object.bounds.Extents.z = horizontalRadius;
         object.color = color;
+        object.stencilReference = mesh == SceneMesh::Cube && color.y > color.x && color.y > color.z
+            ? 1u : 0u;
         object.materialParameters = materialParameters;
         object.uvParameters = uvParameters;
         object.textureTableStart = mesh == SceneMesh::Gato ? 7u : 4u;
@@ -1411,6 +1432,9 @@ void RenderingSystem::SortReverseParticles(const Camera& camera)
 
 void RenderingSystem::DrawParticles(const Camera& camera)
 {
+    // Непрозрачные частицы не являются зелёными объектами и очищают stencil там,
+    // где проходят depth test перед уже нарисованной геометрией.
+    m_commandList->OMSetStencilRef(0);
     ParticleDrawConstants constants{};
     XMStoreFloat4x4(&constants.viewProjection, camera.ViewProjection());
     const XMFLOAT3 cameraForwardFloat = camera.Direction();
@@ -1489,6 +1513,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     for (uint32_t index : m_visibleIndices)
     {
         const SceneObject& object = m_objects[index];
+        m_commandList->OMSetStencilRef(object.stencilReference);
         const bool isSprite = object.lod == LodLevel::Sprite;
         m_commandList->SetPipelineState(isSprite ? m_spritePso.Get() : m_geometryPso.Get());
         ObjectConstants constants{};
@@ -1518,6 +1543,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     }
 
     m_commandList->SetPipelineState(m_cachedTessellationPso.Get());
+    m_commandList->OMSetStencilRef(0);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->SetGraphicsRootDescriptorTable(1, GpuSrv(4));
     ObjectConstants tessConstants{};
@@ -1580,6 +1606,10 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     m_commandList->IASetVertexBuffers(0, 0, nullptr);
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->DrawInstanced(6, 1, 0, 0);
+
+    // Post-process закончил читать stencil как SRV; возвращаем общий ресурс в
+    // depth state для проверки глубины полупрозрачных частиц.
+    m_gbuffer.RestoreDepthAfterPostProcess(m_commandList.Get());
 
     // Полупрозрачные частицы рисуются после deferred lighting прямо в back buffer.
     // Depth test использует глубину непрозрачной сцены, но depth write выключен в PSO.

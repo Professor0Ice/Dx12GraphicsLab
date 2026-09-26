@@ -5,9 +5,13 @@ class GBuffer
 {
 public:
     static constexpr UINT TargetCount = 3;
-    void Initialize(ID3D12Device* device, UINT width, UINT height,D3D12_CPU_DESCRIPTOR_HANDLE srvStart, UINT srvIncrement);
+    static constexpr DXGI_FORMAT DepthStencilFormat = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+    void Initialize(ID3D12Device* device, UINT width, UINT height,
+                    D3D12_CPU_DESCRIPTOR_HANDLE srvStart, UINT srvIncrement,
+                    D3D12_CPU_DESCRIPTOR_HANDLE stencilSrv);
     void BeginGeometry(ID3D12GraphicsCommandList* commandList);
     void EndGeometry(ID3D12GraphicsCommandList* commandList);
+    void RestoreDepthAfterPostProcess(ID3D12GraphicsCommandList* commandList);
 
     D3D12_CPU_DESCRIPTOR_HANDLE RtvStart() const { return m_rtvHeap->GetCPUDescriptorHandleForHeapStart(); }
     D3D12_CPU_DESCRIPTOR_HANDLE Dsv() const { return m_dsvHeap->GetCPUDescriptorHandleForHeapStart(); }
