@@ -14,7 +14,6 @@ cbuffer LightingConstants : register(b0)
     row_major float4x4 gInverseViewProjection;
     row_major float4x4 gShadowViewProjections[4];
     float4 gCameraAndLightCount;
-    // x: highest mip of the prefiltered environment, y: IBL intensity, z: exposure.
     float4 gIblParameters;
     float4 gCascadeSplits;
     float4 gShadowParameters;
@@ -24,8 +23,8 @@ cbuffer LightingConstants : register(b0)
 };
 
 Texture2D gAlbedo : register(t0);
-Texture2D gNormal : register(t1);       // xyz: world normal, w: perceptual roughness
-Texture2D gPosition : register(t2);     // xyz: world position, w: metallic
+Texture2D gNormal : register(t1);
+Texture2D gPosition : register(t2);
 Texture2DArray gShadowMap : register(t3);
 TextureCube gIrradianceMap : register(t4);
 TextureCube gPrefilteredEnvironmentMap : register(t5);
@@ -112,25 +111,41 @@ float3 EvaluatePbrLight(Light light, float3 worldPosition, float3 normal,
     return contribution;
 }
 
-float EvaluateDirectionalShadow(float3 worldPosition, float3 normal)
+uint SelectShadowCascade(float3 worldPosition)
 {
     const float viewDepth = dot(worldPosition - gCameraAndLightCount.xyz, gCameraForward.xyz);
     uint cascade = viewDepth > gCascadeSplits.x ? 1u : 0u;
     cascade = viewDepth > gCascadeSplits.y ? 2u : cascade;
     cascade = viewDepth > gCascadeSplits.z ? 3u : cascade;
+    return cascade;
+}
+
+float3 ShadowCascadeDebugColor(uint cascade)
+{
+    if (cascade == 0u) return float3(1.00f, 0.10f, 0.10f);
+    if (cascade == 1u) return float3(0.10f, 1.00f, 0.20f);
+    if (cascade == 2u) return float3(0.90f, 0.30f, 1.00f);
+    return float3(.0f, 0.85f, 0.10f);
+}
+
+
+float EvaluateDirectionalShadow(float3 worldPosition, float3 normal)
+{
+    const uint cascade = SelectShadowCascade(worldPosition);
 
     float4 shadowPosition = mul(float4(worldPosition, 1.0f), gShadowViewProjections[cascade]);
     shadowPosition.xyz /= shadowPosition.w;
-    const float2 uv = float2(shadowPosition.x * 0.5f + 0.5f,
-                             -shadowPosition.y * 0.5f + 0.5f);
+    const float2 uv = float2(shadowPosition.x * 0.5f + 0.5f,-shadowPosition.y * 0.5f + 0.5f);
+
     float visibility = 1.0f;
-    if (shadowPosition.z > 0.0f && shadowPosition.z < 1.0f &&
-        all(uv >= 0.0f) && all(uv <= 1.0f))
+
+    if (shadowPosition.z > 0.0f && shadowPosition.z < 1.0f && all(uv >= 0.0f) && all(uv <= 1.0f))
     {
         const float3 directionToLight = normalize(-gLights[0].directionAndType.xyz);
         const float normalSlope = 1.0f - saturate(dot(normal, directionToLight));
         const float bias = max(gShadowParameters.y, gShadowParameters.z * normalSlope);
         visibility = 0.0f;
+        
         [unroll]
         for (int y = -1; y <= 1; ++y)
         {
@@ -138,8 +153,7 @@ float EvaluateDirectionalShadow(float3 worldPosition, float3 normal)
             for (int x = -1; x <= 1; ++x)
             {
                 const float2 offset = float2(x, y) * gShadowParameters.x;
-                visibility += gShadowMap.SampleCmpLevelZero(
-                    gShadowSampler, float3(uv + offset, cascade), shadowPosition.z - bias);
+                visibility += gShadowMap.SampleCmpLevelZero(gShadowSampler, float3(uv + offset, cascade),shadowPosition.z - bias);
             }
         }
         visibility /= 9.0f;

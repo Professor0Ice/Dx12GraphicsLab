@@ -12,6 +12,7 @@ cbuffer ParticleDrawConstants : register(b0)
     float4 gCameraRight;
     float4 gCameraUp;
     float4 gColorAndSize;
+    float4 gParticleParameters;
 };
 
 StructuredBuffer<Particle> gParticles : register(t0);
@@ -22,9 +23,26 @@ struct VSOutput
     float3 worldPosition : POSITION0;
 };
 
+struct ParticleSortItem
+{
+    float distanceSquared;
+    uint particleIndex;
+};
+
+StructuredBuffer<ParticleSortItem> gSortedParticles : register(t1);
+
 VSOutput VSMain(uint vertexId : SV_VertexID)
 {
     Particle particle = gParticles[vertexId];
+    VSOutput output;
+    output.position = float4(particle.position, 1.0f);
+    output.worldPosition = particle.position;
+    return output;
+}
+
+VSOutput VSSorted(uint vertexId : SV_VertexID)
+{
+    Particle particle = gParticles[gSortedParticles[vertexId].particleIndex];
     VSOutput output;
     output.position = float4(particle.position, 1.0f);
     output.worldPosition = particle.position;
@@ -70,7 +88,7 @@ void GSMain(point VSOutput input[1], inout TriangleStream<GSOutput> stream)
         output.worldPosition = corners[index];
         output.normal = normal;
         output.uv = uvs[index];
-        output.color = float4(gColorAndSize.rgb, 1.0f);
+        output.color = float4(gColorAndSize.rgb, gParticleParameters.x);
         stream.Append(output);
     }
 }
@@ -91,4 +109,10 @@ GBufferOutput PSMain(GSOutput input)
     output.normal = float4(normalize(input.normal), 0.28f);
     output.position = float4(input.worldPosition, 0.0f);
     return output;
+}
+
+float4 PSTransparent(GSOutput input) : SV_TARGET
+{
+    // Без clip: вторая система рисуется именно квадратами.
+    return input.color;
 }

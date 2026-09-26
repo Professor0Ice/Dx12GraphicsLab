@@ -15,6 +15,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             renderer.Render(camera, 0.0f, 1.0f / 60.0f);
             renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
             renderer.Render(camera, 1.0f, 1.0f / 60.0f);
+            renderer.SetPostProcessMode(PostProcessMode::ShadowCascades);
+            renderer.Render(camera, 1.0f, 1.0f / 60.0f);
             return EXIT_SUCCESS;
         }
         Framework application(instance);

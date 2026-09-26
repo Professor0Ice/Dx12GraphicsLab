@@ -9,7 +9,8 @@ enum class PostProcessMode : uint32_t
 {
     None = 0,
     Grayscale = 1,
-    SobelEdges = 2
+    SobelEdges = 2,
+    ShadowCascades = 3
 };
 
 class RenderingSystem
@@ -133,6 +134,22 @@ private:
         DirectX::XMFLOAT4 cameraRight;
         DirectX::XMFLOAT4 cameraUp;
         DirectX::XMFLOAT4 colorAndSize;
+        DirectX::XMFLOAT4 parameters; // x = opacity.
+    };
+
+    struct ParticleSortItem
+    {
+        float distanceSquared;
+        UINT particleIndex;
+    };
+
+    struct alignas(16) ParticleSortConstants
+    {
+        DirectX::XMFLOAT3 cameraPosition;
+        UINT particleCount;
+        UINT stageK;
+        UINT stageJ;
+        DirectX::XMFLOAT2 padding;
     };
 
     void CreateDeviceAndSwapChain(HWND window);
@@ -155,7 +172,10 @@ private:
     void UpdateTessellationCache(const Camera& camera, float totalTime);
     void DrawCachedTessellation(const ObjectConstants& constants);
     void UpdateParticles(float deltaTime);
+    void UpdateReverseParticles(float deltaTime);
+    void SortReverseParticles(const Camera& camera);
     void DrawParticles(const Camera& camera);
+    void DrawTransparentParticles(const Camera& camera);
     D3D12_GPU_VIRTUAL_ADDRESS UploadConstants(const void* data, size_t size);
     ComPtr<ID3DBlob> CompileShader(const std::filesystem::path& file,
                                   const char* entry, const char* target) const;
@@ -198,9 +218,16 @@ private:
     ComPtr<ID3D12CommandSignature> m_tessDrawCommandSignature;
     ComPtr<ID3D12RootSignature> m_particleComputeRootSignature;
     ComPtr<ID3D12RootSignature> m_particleDrawRootSignature;
+    ComPtr<ID3D12RootSignature> m_particleSortRootSignature;
+    ComPtr<ID3D12RootSignature> m_transparentParticleDrawRootSignature;
     ComPtr<ID3D12PipelineState> m_particleInitializePso;
     ComPtr<ID3D12PipelineState> m_particleComputePso;
     ComPtr<ID3D12PipelineState> m_particleDrawPso;
+    ComPtr<ID3D12PipelineState> m_reverseParticleInitializePso;
+    ComPtr<ID3D12PipelineState> m_reverseParticleComputePso;
+    ComPtr<ID3D12PipelineState> m_particleSortBuildPso;
+    ComPtr<ID3D12PipelineState> m_particleSortStepPso;
+    ComPtr<ID3D12PipelineState> m_transparentParticleDrawPso;
 
     ComPtr<ID3D12Resource> m_shadowMap; 
     ComPtr<ID3D12DescriptorHeap> m_shadowDsvHeap;//на каждый каскад для записи глубины
@@ -231,6 +258,15 @@ private:
     };
     ComPtr<ID3D12Resource> m_particleCounterUpload;
     UINT m_particleReadBuffer = 0;
+    std::array<ComPtr<ID3D12Resource>, 2> m_reverseParticleBuffers;
+    std::array<ComPtr<ID3D12Resource>, 2> m_reverseParticleCounters;
+    std::array<D3D12_RESOURCE_STATES, 2> m_reverseParticleBufferStates{
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    };
+    UINT m_reverseParticleReadBuffer = 0;
+    ComPtr<ID3D12Resource> m_reverseParticleSortItems;
+    D3D12_RESOURCE_STATES m_reverseParticleSortState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     float m_particleTime = 0.0f;
 
     ComPtr<ID3D12Fence> m_fence; 
@@ -255,5 +291,5 @@ private:
     std::vector<SceneBounds> m_sceneBounds;
     std::vector<uint32_t> m_visibleIndices;
     std::unique_ptr<Octree> m_octree;
-    PostProcessMode m_postProcessMode = PostProcessMode::None;
+    PostProcessMode m_postProcessMode = PostProcessMode::ShadowCascades;
 };

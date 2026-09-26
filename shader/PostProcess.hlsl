@@ -23,10 +23,8 @@ float SobelEdge(float2 uv)
     const float bottomLeft  = AlbedoLuminance(uv + texel * float2(-1.0f,  1.0f));
     const float bottom      = AlbedoLuminance(uv + texel * float2( 0.0f,  1.0f));
     const float bottomRight = AlbedoLuminance(uv + texel * float2( 1.0f,  1.0f));
-    const float gradientX = -topLeft - 2.0f * left - bottomLeft +
-                             topRight + 2.0f * right + bottomRight;
-    const float gradientY = -topLeft - 2.0f * top - topRight +
-                             bottomLeft + 2.0f * bottom + bottomRight;
+    const float gradientX = -topLeft - 2.0f * left - bottomLeft +topRight + 2.0f * right + bottomRight;
+    const float gradientY = -topLeft - 2.0f * top - topRight +bottomLeft + 2.0f * bottom + bottomRight;
     return saturate(length(float2(gradientX, gradientY)) * 2.0f);
 }
 
@@ -43,6 +41,16 @@ float4 PSMain(PSInput input) : SV_TARGET
     {
         const float edge = SobelEdge(input.uv);
         color = lerp(color, float3(0.01f, 0.015f, 0.025f), edge);
+    }
+    else if (mode == 3u)
+    {
+        const float3 normal = gNormal.SampleLevel(gSampler, input.uv, 0.0f).xyz;
+        if (dot(normal, normal) >= 0.01f)
+        {
+            const float3 worldPosition = gPosition.SampleLevel(gSampler, input.uv, 0.0f).xyz;
+            const uint cascade = SelectShadowCascade(worldPosition);
+            color = lerp(color, ShadowCascadeDebugColor(cascade), 0.70f);
+        }
     }
     return float4(color, 1.0f);
 }
