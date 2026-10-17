@@ -16,4 +16,3 @@ private:
     float m_deltaSeconds = 0.0f;
     float m_totalSeconds = 0.0f;
 };
-

@@ -1,9 +1,8 @@
 #include "Window.hpp"
 
-Window::Window(HINSTANCE instance, UINT width, UINT height, std::wstring title, bool visible)
-    : m_instance(instance), m_width(width), m_height(height)
+Window::Window(HINSTANCE instance, UINT width, UINT height, std::wstring title, bool visible) : m_instance(instance), m_width(width), m_height(height)
 {
-    // Класс окна связывает имя будущего окна с функцией обработки сообщений WinAPI.
+
     WNDCLASSEXW windowClass{};
     windowClass.cbSize = sizeof(windowClass);
     windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -12,21 +11,15 @@ Window::Window(HINSTANCE instance, UINT width, UINT height, std::wstring title, 
     windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
     windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     windowClass.lpszClassName = m_className.c_str();
-    if (not RegisterClassExW(&windowClass) and GetLastError() not_eq ERROR_CLASS_ALREADY_EXISTS)
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
         throw std::runtime_error("RegisterClassExW failed");
 
-    // AdjustWindowRect добавляет рамку и заголовок так, чтобы клиентская область сохранила нужный размер.
     RECT rectangle{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&rectangle, style, FALSE);
 
-    // HWND этого окна затем передаётся DXGI при создании swap chain.
-    m_hwnd = CreateWindowExW(
-        0, m_className.c_str(), title.c_str(), style,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        rectangle.right - rectangle.left, rectangle.bottom - rectangle.top,
-        nullptr, nullptr, m_instance, this);
-    if (not m_hwnd)
+    m_hwnd = CreateWindowExW(0, m_className.c_str(), title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT, rectangle.right - rectangle.left, rectangle.bottom - rectangle.top, nullptr, nullptr, m_instance, this);
+    if (!m_hwnd)
         throw std::runtime_error("CreateWindowExW failed");
 
     if (visible)
@@ -45,7 +38,7 @@ Window::~Window()
 
 bool Window::ProcessMessages()
 {
-    // Неблокирующий цикл выгребает накопленные сообщения и возвращает управление рендерингу.
+
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
     {
@@ -59,7 +52,7 @@ bool Window::ProcessMessages()
 
 LRESULT CALLBACK Window::StaticWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    // WinAPI вызывает статическую функцию; GWLP_USERDATA восстанавливает нужный объект Window.
+
     Window* window = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (message == WM_NCCREATE)
     {
@@ -68,8 +61,7 @@ LRESULT CALLBACK Window::StaticWindowProc(HWND hwnd, UINT message, WPARAM wParam
         window->m_hwnd = hwnd;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
     }
-    return window ? window->WindowProc(message, wParam, lParam)
-                  : DefWindowProcW(hwnd, message, wParam, lParam);
+    return window ? window->WindowProc(message, wParam, lParam) : DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
 LRESULT Window::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)

@@ -52,8 +52,7 @@ float GeometrySchlickGGX(float nDotDirection, float roughness)
 
 float GeometrySmith(float3 normal, float3 viewDirection, float3 lightDirection, float roughness)
 {
-    return GeometrySchlickGGX(saturate(dot(normal, viewDirection)), roughness) *
-           GeometrySchlickGGX(saturate(dot(normal, lightDirection)), roughness);
+    return GeometrySchlickGGX(saturate(dot(normal, viewDirection)), roughness) * GeometrySchlickGGX(saturate(dot(normal, lightDirection)), roughness);
 }
 
 float3 FresnelSchlick(float cosine, float3 f0)
@@ -63,12 +62,10 @@ float3 FresnelSchlick(float cosine, float3 f0)
 
 float3 FresnelSchlickRoughness(float cosine, float3 f0, float roughness)
 {
-    return f0 + (max((1.0f - roughness).xxx, f0) - f0) *
-                pow(1.0f - saturate(cosine), 5.0f);
+    return f0 + (max((1.0f - roughness).xxx, f0) - f0) * pow(1.0f - saturate(cosine), 5.0f);
 }
 
-float3 EvaluatePbrLight(Light light, float3 worldPosition, float3 normal,
-                        float3 viewDirection, float3 albedo, float metallic, float roughness)
+float3 EvaluatePbrLight(Light light, float3 worldPosition, float3 normal,float3 viewDirection, float3 albedo, float metallic, float roughness)
 {
     const int type = (int)round(light.directionAndType.w);
     float3 lightDirection;
@@ -103,8 +100,7 @@ float3 EvaluatePbrLight(Light light, float3 worldPosition, float3 normal,
         const float distribution = DistributionGGX(normal, halfway, roughness);
         const float geometry = GeometrySmith(normal, viewDirection, lightDirection, roughness);
         const float3 fresnel = FresnelSchlick(saturate(dot(halfway, viewDirection)), f0);
-        const float3 specular = distribution * geometry * fresnel /
-                                max(4.0f * saturate(dot(normal, viewDirection)) * nDotL, 1e-4f);
+        const float3 specular = distribution * geometry * fresnel / max(4.0f * saturate(dot(normal, viewDirection)) * nDotL, 1e-4f);
         const float3 diffuseWeight = (1.0f - fresnel) * (1.0f - metallic);
         const float3 radiance = light.colorAndIntensity.rgb * light.colorAndIntensity.w * attenuation;
         contribution = (diffuseWeight * albedo / PI + specular) * radiance * nDotL;
@@ -137,7 +133,7 @@ float EvaluateDirectionalShadow(float3 worldPosition, float3 normal)
         const float normalSlope = 1.0f - saturate(dot(normal, directionToLight));
         const float bias = max(gShadowParameters.y, gShadowParameters.z * normalSlope);
         visibility = 0.0f;
-        
+
         [unroll]
         for (int y = -1; y <= 1; ++y)
         {
@@ -160,8 +156,7 @@ float3 ReconstructWorldDirection(float2 uv)
     return normalize(world.xyz / max(abs(world.w), 1e-5f) - gCameraAndLightCount.xyz);
 }
 
-float3 EvaluateIbl(float3 normal, float3 viewDirection, float3 albedo,
-                   float metallic, float roughness, float ao)
+float3 EvaluateIbl(float3 normal, float3 viewDirection, float3 albedo,float metallic, float roughness, float ao)
 {
     const float nDotV = saturate(dot(normal, viewDirection));
     const float3 f0 = lerp(0.04f.xxx, albedo, metallic);
@@ -171,10 +166,8 @@ float3 EvaluateIbl(float3 normal, float3 viewDirection, float3 albedo,
     const float3 irradiance = gIrradianceMap.SampleLevel(gIblSampler, normal, 0.0f).rgb;
     const float3 diffuse = irradiance * albedo;
     const float3 reflection = reflect(-viewDirection, normal);
-    const float3 prefiltered = gPrefilteredEnvironmentMap.SampleLevel(
-        gIblSampler, reflection, roughness * gIblParameters.x).rgb;
-    const float2 brdf = gBrdfIntegrationMap.SampleLevel(
-        gIblSampler, float2(nDotV, roughness), 0.0f).rg;
+    const float3 prefiltered = gPrefilteredEnvironmentMap.SampleLevel(gIblSampler, reflection, roughness * gIblParameters.x).rgb;
+    const float2 brdf = gBrdfIntegrationMap.SampleLevel(gIblSampler, float2(nDotV, roughness), 0.0f).rg;
     const float3 specular = prefiltered * (fresnel * brdf.x + brdf.y);
     return (diffuseWeight * diffuse + specular) * ao * gIblParameters.y;
 }
@@ -189,8 +182,7 @@ float3 CalculateSceneColor(float2 uv)
     if (dot(normalSample.xyz, normalSample.xyz) < 0.01f)
     {
         const float3 viewRay = ReconstructWorldDirection(uv);
-        color = gPrefilteredEnvironmentMap.SampleLevel(gIblSampler, viewRay, 0.0f).rgb *
-                gIblParameters.y;
+        color = gPrefilteredEnvironmentMap.SampleLevel(gIblSampler, viewRay, 0.0f).rgb * gIblParameters.y;
     }
     else
     {
@@ -199,15 +191,13 @@ float3 CalculateSceneColor(float2 uv)
         const float3 viewDirection = normalize(gCameraAndLightCount.xyz - positionSample.xyz);
         const float roughness = clamp(normalSample.w, 0.045f, 1.0f);
         const float metallic = saturate(positionSample.w);
-        color = EvaluateIbl(normal, viewDirection, albedo, metallic, roughness,
-                            saturate(albedoSample.a));
+        color = EvaluateIbl(normal, viewDirection, albedo, metallic, roughness, saturate(albedoSample.a));
 
         const uint lightCount = min((uint)gCameraAndLightCount.w, 16u);
         for (uint i = 0; i < lightCount; ++i)
         {
             const float shadow = i == 0 ? EvaluateDirectionalShadow(positionSample.xyz, normal) : 1.0f;
-            color += shadow * EvaluatePbrLight(gLights[i], positionSample.xyz, normal,
-                                               viewDirection, albedo, metallic, roughness);
+            color += shadow * EvaluatePbrLight(gLights[i], positionSample.xyz, normal, viewDirection, albedo, metallic, roughness);
         }
     }
     return color;
@@ -216,7 +206,6 @@ float3 CalculateSceneColor(float2 uv)
 float3 ToneMapAndGamma(float3 color)
 {
     color *= gIblParameters.z;
-    color = saturate((color * (2.51f * color + 0.03f)) /
-                     (color * (2.43f * color + 0.59f) + 0.14f));
+    color = saturate((color * (2.51f * color + 0.03f)) / (color * (2.43f * color + 0.59f) + 0.14f));
     return pow(color, 1.0f / 2.2f);
 }

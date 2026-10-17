@@ -6,13 +6,9 @@ struct PSInput
     float2 uv : TEXCOORD;
 };
 
-float3 SampleAlbedo(float2 uv)
+float SampleLuminance(float2 uv)
 {
-    return gAlbedo.SampleLevel(gSampler, saturate(uv), 0.0f).rgb;
-}
-
-float AlbedoLuminance(float3 albedo)
-{
+    float3 albedo = gAlbedo.SampleLevel(gSampler, saturate(uv), 0.0f).rgb;
     return dot(albedo, float3(0.2126f, 0.7152f, 0.0722f));
 }
 
@@ -42,26 +38,17 @@ float GreenStencilNearby(float2 pixelPosition)
 float SobelEdge(float2 uv)
 {
     const float2 texel = gPostProcessParameters.yz;
-    const float3 topLeftColor = SampleAlbedo(uv + texel * float2(-1.0f, -1.0f));
-    const float3 topColor = SampleAlbedo(uv + texel * float2( 0.0f, -1.0f));
-    const float3 topRightColor = SampleAlbedo(uv + texel * float2( 1.0f, -1.0f));
-    const float3 leftColor = SampleAlbedo(uv + texel * float2(-1.0f,  0.0f));
-    const float3 rightColor = SampleAlbedo(uv + texel * float2( 1.0f,  0.0f));
-    const float3 bottomLeftColor = SampleAlbedo(uv + texel * float2(-1.0f,  1.0f));
-    const float3 bottomColor = SampleAlbedo(uv + texel * float2( 0.0f,  1.0f));
-    const float3 bottomRightColor = SampleAlbedo(uv + texel * float2( 1.0f,  1.0f));
+    const float topLeft = SampleLuminance(uv + texel * float2(-1.0f, -1.0f));
+    const float top = SampleLuminance(uv + texel * float2( 0.0f, -1.0f));
+    const float topRight = SampleLuminance(uv + texel * float2( 1.0f, -1.0f));
+    const float left = SampleLuminance(uv + texel * float2(-1.0f,  0.0f));
+    const float right = SampleLuminance(uv + texel * float2( 1.0f,  0.0f));
+    const float bottomLeft = SampleLuminance(uv + texel * float2(-1.0f,  1.0f));
+    const float bottom = SampleLuminance(uv + texel * float2( 0.0f,  1.0f));
+    const float bottomRight = SampleLuminance(uv + texel * float2( 1.0f,  1.0f));
 
-    const float topLeft = AlbedoLuminance(topLeftColor);
-    const float top = AlbedoLuminance(topColor);
-    const float topRight = AlbedoLuminance(topRightColor);
-    const float left = AlbedoLuminance(leftColor);
-    const float right = AlbedoLuminance(rightColor);
-    const float bottomLeft = AlbedoLuminance(bottomLeftColor);
-    const float bottom = AlbedoLuminance(bottomColor);
-    const float bottomRight = AlbedoLuminance(bottomRightColor);
-
-    const float gradientX = -topLeft - 2.0f * left - bottomLeft +topRight + 2.0f * right + bottomRight;
-    const float gradientY = -topLeft - 2.0f * top - topRight +bottomLeft + 2.0f * bottom + bottomRight;
+    const float gradientX = -topLeft - 2.0f * left - bottomLeft + topRight + 2.0f * right + bottomRight;
+    const float gradientY = -topLeft - 2.0f * top - topRight + bottomLeft + 2.0f * bottom + bottomRight;
     return saturate(length(float2(gradientX, gradientY)) * 2.0f);
 }
 

@@ -53,13 +53,14 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -78,7 +79,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>
@@ -96,6 +97,7 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\Octree.cpp" />
     <ClCompile Include="src\RenderingSystem.cpp" />
+    <ClCompile Include="src\Terrain.cpp" />
     <ClCompile Include="src\Texture.cpp" />
     <ClCompile Include="src\Timer.cpp" />
     <ClCompile Include="src\Window.cpp" />
@@ -109,6 +111,7 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <ClInclude Include="include\Mesh.hpp" />
     <ClInclude Include="include\Octree.hpp" />
     <ClInclude Include="include\RenderingSystem.hpp" />
+    <ClInclude Include="include\Terrain.hpp" />
     <ClInclude Include="include\Texture.hpp" />
     <ClInclude Include="include\Timer.hpp" />
     <ClInclude Include="include\Window.hpp" />
@@ -125,6 +128,8 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <None Include="shader\ShadowTessellation.hlsl" />
     <None Include="shader\Tessellation.hlsl" />
     <None Include="shader\TessellationDrawArgs.hlsl" />
+    <None Include="shader\Terrain.hlsl" />
+    <None Include="shader\TerrainShadow.hlsl" />
     <None Include="assets\showcase.obj" />
     <None Include="assets\showcase.mtl" />
     <None Include="assets\Gato.obj" />
@@ -136,7 +141,10 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <None Include="assets\ibl_brdf_lut.dds" />
     <None Include="assets\ibl_irradiance.dds" />
     <None Include="assets\ibl_prefiltered.dds" />
+    <None Include="assets\New Project Height Output-1025.png" />
+    <None Include="assets\New Project Material Output 1025_diffuse.png" />
     <None Include="tools\generate_ibl_assets.py" />
+    <None Include="tools\generate_terrain_tiles.py" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

@@ -1,4 +1,3 @@
-
 cbuffer ObjectConstants : register(b0)
 {
     row_major float4x4 gWorld;
@@ -12,7 +11,7 @@ cbuffer ObjectConstants : register(b0)
 
 Texture2D gAlbedo : register(t0);
 Texture2D gNormalMap : register(t1);
-Texture2D gDisplacement : register(t2); 
+Texture2D gDisplacement : register(t2);
 SamplerState gSampler : register(s0);
 
 struct ControlPoint
@@ -37,14 +36,13 @@ struct PatchConstants
 PatchConstants PatchConstantFunction(InputPatch<ControlPoint, 4> patch, uint patchId : SV_PrimitiveID)
 {
     PatchConstants output;
-    // Средняя точка patch используется для оценки расстояния до камеры.
+
     float3 center = (patch[0].position + patch[1].position + patch[2].position + patch[3].position) * 0.25f;
     float3 worldCenter = mul(float4(center, 1.0f), gWorld).xyz;
     float distanceToCamera = distance(worldCenter, gCameraAndTime.xyz);
     float range = max(gTessellationParameters.w - gTessellationParameters.z, 0.001f);
 
-    float factor = lerp(gTessellationParameters.x, gTessellationParameters.y,
-                        saturate((distanceToCamera - gTessellationParameters.z) / range));
+    float factor = lerp(gTessellationParameters.x, gTessellationParameters.y, saturate((distanceToCamera - gTessellationParameters.z) / range));
     [unroll] for (int i = 0; i < 4; ++i) output.edges[i] = factor;
     output.inside[0] = factor;
     output.inside[1] = factor;
@@ -62,10 +60,9 @@ ControlPoint HSMain(InputPatch<ControlPoint, 4> patch, uint pointId : SV_OutputC
 }
 
 [domain("quad")]
-float4 DSMain(PatchConstants constants, float2 domain : SV_DomainLocation,
-              const OutputPatch<ControlPoint, 4> patch) : SV_POSITION
+float4 DSMain(PatchConstants constants, float2 domain : SV_DomainLocation, const OutputPatch<ControlPoint, 4> patch) : SV_POSITION
 {
-    // Двойной lerp билинейно восстанавливает позицию, нормаль и UV внутри quad patch.
+
     float3 p0 = lerp(patch[0].position, patch[1].position, domain.y);
     float3 p1 = lerp(patch[3].position, patch[2].position, domain.y);
     float3 position = lerp(p0, p1, domain.x);

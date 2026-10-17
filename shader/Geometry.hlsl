@@ -1,19 +1,18 @@
-
 cbuffer ObjectConstants : register(b0)
 {
-    row_major float4x4 gWorld;          
-    row_major float4x4 gViewProjection; 
-    float4 gCameraAndTime;              
-    float4 gUvParameters;               
-    float4 gMaterialColor;              
-    float4 gMaterialParameters; // x: metallic, y: perceptual roughness, z: AO.
-    float4 gTessellationParameters;    
+    row_major float4x4 gWorld;
+    row_major float4x4 gViewProjection;
+    float4 gCameraAndTime;
+    float4 gUvParameters;
+    float4 gMaterialColor;
+    float4 gMaterialParameters;
+    float4 gTessellationParameters;
 };
 
-Texture2D gAlbedo : register(t0);       
-Texture2D gNormalMap : register(t1);    
+Texture2D gAlbedo : register(t0);
+Texture2D gNormalMap : register(t1);
 Texture2D gDisplacement : register(t2);
-SamplerState gSampler : register(s0);  
+SamplerState gSampler : register(s0);
 
 struct VSInput
 {
@@ -37,11 +36,10 @@ VSOutput VSMain(VSInput input)
     VSOutput output;
 
     float4 worldPosition = mul(float4(input.position, 1.0f), gWorld);
-    
-   
+
     output.position = mul(worldPosition, gViewProjection);
     output.worldPosition = worldPosition.xyz;
-    
+
     output.normal = normalize(mul(float4(input.normal, 0.0f), gWorld).xyz);
     output.tangent = normalize(mul(float4(input.tangent.xyz, 0.0f), gWorld).xyz);
 
@@ -66,9 +64,8 @@ GBufferOutput PSMain(VSOutput input)
 
     float3 tangentNormal = gNormalMap.Sample(gSampler, input.uv).xyz * 2.0f - 1.0f;
 
-    float3 worldNormal = normalize(tangentNormal.x * tangent + tangentNormal.y * bitangent +
-                                   tangentNormal.z * geometricNormal);
-    output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor; 
+    float3 worldNormal = normalize(tangentNormal.x * tangent + tangentNormal.y * bitangent + tangentNormal.z * geometricNormal);
+    output.albedo = gAlbedo.Sample(gSampler, input.uv) * gMaterialColor;
     output.albedo.a = saturate(gMaterialParameters.z);
     output.normal = float4(worldNormal, clamp(gMaterialParameters.y, 0.045f, 1.0f));
     output.position = float4(input.worldPosition, saturate(gMaterialParameters.x));

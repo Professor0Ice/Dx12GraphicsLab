@@ -67,18 +67,8 @@ void GSMain(point VSOutput input[1], inout TriangleStream<GSOutput> stream)
     const float halfSize = gColorAndSize.w;
     const float3 center = input[0].worldPosition;
 
-    const float3 corners[4] =
-    {
-        center + (-right + up) * halfSize,
-        center + (-right - up) * halfSize,
-        center + ( right + up) * halfSize,
-        center + ( right - up) * halfSize
-    };
-    const float2 uvs[4] =
-    {
-        float2(0.0f, 0.0f), float2(0.0f, 1.0f),
-        float2(1.0f, 0.0f), float2(1.0f, 1.0f)
-    };
+    const float3 corners[4] = { center + (-right + up) * halfSize, center + (-right - up) * halfSize, center + ( right + up) * halfSize, center + ( right - up) * halfSize };
+    const float2 uvs[4] = { float2(0.0f, 0.0f), float2(0.0f, 1.0f), float2(1.0f, 0.0f), float2(1.0f, 1.0f) };
 
     [unroll]
     for (uint index = 0; index < 4; ++index)
@@ -113,6 +103,6 @@ GBufferOutput PSMain(GSOutput input)
 
 float4 PSTransparent(GSOutput input) : SV_TARGET
 {
-    // Без clip: вторая система рисуется именно квадратами.
+
     return input.color;
 }

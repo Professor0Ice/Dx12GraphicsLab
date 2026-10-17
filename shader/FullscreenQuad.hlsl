@@ -4,19 +4,9 @@ struct VSOutput
     float2 uv : TEXCOORD;
 };
 
-// Два треугольника full-screen quad. Координаты генерируются только из
-// SV_VertexID: input layout, vertex buffer и index buffer не требуются.
 VSOutput VSMain(uint vertexId : SV_VertexID)
 {
-    static const float2 positions[6] =
-    {
-        float2(-1.0f,  1.0f),
-        float2( 1.0f,  1.0f),
-        float2( 1.0f, -1.0f),
-        float2(-1.0f,  1.0f),
-        float2( 1.0f, -1.0f),
-        float2(-1.0f, -1.0f)
-    };
+    static const float2 positions[6] = { float2(-1.0f,  1.0f), float2( 1.0f,  1.0f), float2( 1.0f, -1.0f), float2(-1.0f,  1.0f), float2( 1.0f, -1.0f), float2(-1.0f, -1.0f) };
 
     VSOutput output;
     const float2 position = positions[vertexId];

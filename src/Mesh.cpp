@@ -7,16 +7,14 @@ namespace
     struct ObjKey
     {
         int p = 0, t = 0, n = 0;
-        bool operator==(const ObjKey& other) const { return p == other.p and t == other.t and n == other.n; }
+        bool operator==(const ObjKey& other) const { return p == other.p && t == other.t && n == other.n; }
     };
 
     struct ObjKeyHash
     {
         size_t operator()(const ObjKey& key) const
         {
-            return (static_cast<size_t>(key.p) * 73856093u) ^
-                   (static_cast<size_t>(key.t) * 19349663u) ^
-                   (static_cast<size_t>(key.n) * 83492791u);
+            return (static_cast<size_t>(key.p) * 73856093u) ^ (static_cast<size_t>(key.t) * 19349663u) ^ (static_cast<size_t>(key.n) * 83492791u);
         }
     };
 
@@ -30,9 +28,9 @@ namespace
         ObjKey result{};
         std::stringstream stream(token);
         std::string part;
-        if (std::getline(stream, part, '/') and not part.empty()) result.p = std::stoi(part);
-        if (std::getline(stream, part, '/') and not part.empty()) result.t = std::stoi(part);
-        if (std::getline(stream, part, '/') and not part.empty()) result.n = std::stoi(part);
+        if (std::getline(stream, part, '/') && !part.empty()) result.p = std::stoi(part);
+        if (std::getline(stream, part, '/') && !part.empty()) result.t = std::stoi(part);
+        if (std::getline(stream, part, '/') && !part.empty()) result.n = std::stoi(part);
         return result;
     }
 
@@ -51,11 +49,7 @@ namespace
             const float determinant = du1 * dv2 - du2 * dv1;
             if (std::abs(determinant) < 1e-7f) continue;
             const float inv = 1.0f / determinant;
-            const XMFLOAT3 tangent{
-                (e1.x * dv2 - e2.x * dv1) * inv,
-                (e1.y * dv2 - e2.y * dv1) * inv,
-                (e1.z * dv2 - e2.z * dv1) * inv
-            };
+            const XMFLOAT3 tangent{ (e1.x * dv2 - e2.x * dv1) * inv, (e1.y * dv2 - e2.y * dv1) * inv, (e1.z * dv2 - e2.z * dv1) * inv };
             for (int j = 0; j < 3; ++j)
             {
                 auto& sum = tangentSums[data.indices[i + j]];
@@ -75,7 +69,7 @@ namespace
     {
         std::vector<MaterialDescription> materials;
         std::ifstream file(path);
-        if (not file) return materials;
+        if (!file) return materials;
         MaterialDescription* current = nullptr;
         std::string line;
         while (std::getline(file, line))
@@ -89,19 +83,19 @@ namespace
                 current = &materials.back();
                 stream >> current->name;
             }
-            else if (current and command == "Kd")
+            else if (current && command == "Kd")
             {
                 stream >> current->diffuse.x >> current->diffuse.y >> current->diffuse.z;
             }
-            else if (current and command == "map_Kd")
+            else if (current && command == "map_Kd")
             {
                 std::string value; stream >> value; current->albedoTexture = path.parent_path() / value;
             }
-            else if (current and (command == "map_Bump" or command == "bump"))
+            else if (current && (command == "map_Bump" || command == "bump"))
             {
                 std::string value; stream >> value; current->normalTexture = path.parent_path() / value;
             }
-            else if (current and command == "disp")
+            else if (current && command == "disp")
             {
                 std::string value; stream >> value; current->displacementTexture = path.parent_path() / value;
             }
@@ -117,9 +111,7 @@ MeshData Mesh::CubeData()
     const auto face = [&](XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d, XMFLOAT3 n, XMFLOAT4 tangent)
     {
         const uint32_t start = static_cast<uint32_t>(data.vertices.size());
-        data.vertices.insert(data.vertices.end(), {
-            {a,n,tangent,{0,1}}, {b,n,tangent,{0,0}}, {c,n,tangent,{1,0}}, {d,n,tangent,{1,1}}
-        });
+        data.vertices.insert(data.vertices.end(), { {a,n,tangent,{0,1}}, {b,n,tangent,{0,0}}, {c,n,tangent,{1,0}}, {d,n,tangent,{1,1}} });
         data.indices.insert(data.indices.end(), { start, start + 1, start + 2, start, start + 2, start + 3 });
     };
     face({-.5f,-.5f,-.5f},{-.5f,.5f,-.5f},{.5f,.5f,-.5f},{.5f,-.5f,-.5f},{0,0,-1},tNX);
@@ -136,13 +128,8 @@ MeshData Mesh::CubeData()
 MeshData Mesh::BillboardData()
 {
     MeshData data;
-    // Прямоугольник смотрит вдоль локальной оси -Z; его матрица разворачивается к камере.
-    data.vertices = {
-        {{-.5f,-.5f,0},{0,0,-1},{1,0,0,1},{0,1}},
-        {{-.5f, .5f,0},{0,0,-1},{1,0,0,1},{0,0}},
-        {{ .5f, .5f,0},{0,0,-1},{1,0,0,1},{1,0}},
-        {{ .5f,-.5f,0},{0,0,-1},{1,0,0,1},{1,1}}
-    };
+
+    data.vertices = { {{-.5f,-.5f,0},{0,0,-1},{1,0,0,1},{0,1}}, {{-.5f, .5f,0},{0,0,-1},{1,0,0,1},{0,0}}, {{ .5f, .5f,0},{0,0,-1},{1,0,0,1},{1,0}}, {{ .5f,-.5f,0},{0,0,-1},{1,0,0,1},{1,1}} };
     data.indices = { 0, 1, 2, 0, 2, 3 };
     data.materials.emplace_back();
     data.submeshes.push_back({ 0, static_cast<uint32_t>(data.indices.size()), 0 });
@@ -152,22 +139,70 @@ MeshData Mesh::BillboardData()
 MeshData Mesh::TessellatedQuadData()
 {
     MeshData data;
-    data.vertices = {
-        {{-1,0,-1},{0,1,0},{1,0,0,1},{0,1}},
-        {{-1,0, 1},{0,1,0},{1,0,0,1},{0,0}},
-        {{ 1,0, 1},{0,1,0},{1,0,0,1},{1,0}},
-        {{ 1,0,-1},{0,1,0},{1,0,0,1},{1,1}}
-    };
+    data.vertices = { {{-1,0,-1},{0,1,0},{1,0,0,1},{0,1}}, {{-1,0, 1},{0,1,0},{1,0,0,1},{0,0}}, {{ 1,0, 1},{0,1,0},{1,0,0,1},{1,0}}, {{ 1,0,-1},{0,1,0},{1,0,0,1},{1,1}} };
     data.indices = { 0, 1, 2, 3 };
     data.materials.emplace_back();
     data.submeshes.push_back({ 0, 4, 0 });
     return data;
 }
 
+MeshData Mesh::TerrainPatchData(uint32_t resolution)
+{
+    MeshData data;
+    resolution = std::max(2u, resolution);
+    const uint32_t side = resolution + 1;
+    data.vertices.reserve(static_cast<size_t>(side) * side + side * 4);
+    data.indices.reserve(static_cast<size_t>(resolution) * resolution * 6 + resolution * 24);
+
+    for (uint32_t z = 0; z <= resolution; ++z)
+    {
+        for (uint32_t x = 0; x <= resolution; ++x)
+        {
+            const float u = static_cast<float>(x) / resolution;
+            const float v = static_cast<float>(z) / resolution;
+            data.vertices.push_back({ { u - 0.5f, 0.0f, v - 0.5f }, { 0,1,0 }, { 1,0,0,1 }, { u,v } });
+        }
+    }
+    for (uint32_t z = 0; z < resolution; ++z)
+    {
+        for (uint32_t x = 0; x < resolution; ++x)
+        {
+            const uint32_t a = z * side + x;
+            const uint32_t b = a + side;
+            data.indices.insert(data.indices.end(), { a,b,b + 1, a,b + 1,a + 1 });
+        }
+    }
+
+    auto addSkirt = [&](auto gridIndex)
+    {
+        const uint32_t topStart = static_cast<uint32_t>(data.vertices.size());
+        for (uint32_t i = 0; i <= resolution; ++i)
+        {
+            Vertex top = data.vertices[gridIndex(i)];
+            data.vertices.push_back(top);
+            top.position.y = -1.0f;
+            data.vertices.push_back(top);
+        }
+        for (uint32_t i = 0; i < resolution; ++i)
+        {
+            const uint32_t a = topStart + i * 2;
+            data.indices.insert(data.indices.end(), { a,a + 1,a + 3, a,a + 3,a + 2 });
+        }
+    };
+    addSkirt([&](uint32_t i) { return i; });
+    addSkirt([&](uint32_t i) { return i * side + resolution; });
+    addSkirt([&](uint32_t i) { return resolution * side + (resolution - i); });
+    addSkirt([&](uint32_t i) { return (resolution - i) * side; });
+
+    data.materials.emplace_back();
+    data.submeshes.push_back({ 0, static_cast<uint32_t>(data.indices.size()), 0 });
+    return data;
+}
+
 MeshData Mesh::LoadObj(const std::filesystem::path& path)
 {
     std::ifstream file(path);
-    if (not file)
+    if (!file)
         throw std::runtime_error("Cannot open OBJ: " + path.string());
 
     MeshData data;
@@ -182,7 +217,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
     std::string line;
     while (std::getline(file, line))
     {
-        if (line.empty() or line[0] == '#') continue;
+        if (line.empty() || line[0] == '#') continue;
         std::stringstream stream(line);
         std::string command;
         stream >> command;
@@ -202,7 +237,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
         {
             std::string name; stream >> name;
             auto loaded = LoadMaterials(path.parent_path() / name);
-            if (not loaded.empty())
+            if (!loaded.empty())
             {
                 data.materials = std::move(loaded);
                 materialIndices.clear();
@@ -228,7 +263,7 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
             {
                 ObjKey key = ParseFaceIndex(token);
                 const auto found = vertexCache.find(key);
-                if (found not_eq vertexCache.end())
+                if (found != vertexCache.end())
                 {
                     polygon.push_back(found->second);
                     continue;
@@ -250,9 +285,8 @@ MeshData Mesh::LoadObj(const std::filesystem::path& path)
             }
         }
     }
-    data.submeshes.erase(std::remove_if(data.submeshes.begin(), data.submeshes.end(),
-        [](const Submesh& mesh) { return mesh.indexCount == 0; }), data.submeshes.end());
-    if (data.vertices.empty() or data.indices.empty())
+    data.submeshes.erase(std::remove_if(data.submeshes.begin(), data.submeshes.end(), [](const Submesh& mesh) { return mesh.indexCount == 0; }), data.submeshes.end());
+    if (data.vertices.empty() || data.indices.empty())
         throw std::runtime_error("OBJ contains no geometry: " + path.string());
     CalculateTangents(data);
     return data;
@@ -263,23 +297,18 @@ void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, 
 
     const UINT64 vertexSize = data.vertices.size() * sizeof(Vertex);
     const UINT64 indexSize = data.indices.size() * sizeof(uint32_t);
-    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT); // Основные буферы читает GPU
-    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD); // Промежуточные буферы заполняет CPU
+    const auto defaultHeap = HeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    const auto uploadHeap = HeapProperties(D3D12_HEAP_TYPE_UPLOAD);
     auto vertexDesc = BufferDescription(vertexSize);
     auto indexDesc = BufferDescription(indexSize);
 
-    // COPY_DEST означает, что первой операцией над default-буфером будет копирование.
-    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_vertexBuffer)), "Create vertex buffer");
-    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexUpload)), "Create vertex upload");
-    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &indexDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_indexBuffer)), "Create index buffer");
-    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &indexDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_indexUpload)), "Create index upload");
+    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_vertexBuffer)), "Create vertex buffer");
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexUpload)), "Create vertex upload");
+    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &indexDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_indexBuffer)), "Create index buffer");
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &indexDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_indexUpload)), "Create index upload");
 
     void* mapped = nullptr;
-    D3D12_RANGE readRange{ 0, 0 }; 
+    D3D12_RANGE readRange{ 0, 0 };
     ThrowIfFailed(m_vertexUpload->Map(0, &readRange, &mapped), "Map vertex upload");
     memcpy(mapped, data.vertices.data(), static_cast<size_t>(vertexSize));
     m_vertexUpload->Unmap(0, nullptr);
@@ -289,10 +318,7 @@ void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, 
 
     commandList->CopyBufferRegion(m_vertexBuffer.Get(), 0, m_vertexUpload.Get(), 0, vertexSize);
     commandList->CopyBufferRegion(m_indexBuffer.Get(), 0, m_indexUpload.Get(), 0, indexSize);
-    std::array<D3D12_RESOURCE_BARRIER, 2> barriers{
-        TransitionBarrier(m_vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER),
-        TransitionBarrier(m_indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER)
-    };
+    std::array<D3D12_RESOURCE_BARRIER, 2> barriers{ TransitionBarrier(m_vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER), TransitionBarrier(m_indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER) };
     commandList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
 
     m_vertexView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
@@ -302,8 +328,7 @@ void Mesh::Upload(ID3D12Device* device, ID3D12GraphicsCommandList* commandList, 
     m_indexView.SizeInBytes = static_cast<UINT>(indexSize);
     m_indexView.Format = DXGI_FORMAT_R32_UINT;
     m_indexCount = static_cast<uint32_t>(data.indices.size());
-    BoundingBox::CreateFromPoints(m_bounds, data.vertices.size(),
-                                  &data.vertices.front().position, sizeof(Vertex));
+    BoundingBox::CreateFromPoints(m_bounds, data.vertices.size(), &data.vertices.front().position, sizeof(Vertex));
     m_submeshes = data.submeshes;
     m_materials = data.materials;
 }

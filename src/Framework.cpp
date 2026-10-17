@@ -1,13 +1,8 @@
 #include "Framework.hpp"
 
-Framework::Framework(HINSTANCE instance)
-    : m_window(instance, 1600, 900, L"KG is pain"),
-      m_input(m_window.Handle()),
-      m_camera(static_cast<float>(m_window.Width()) / m_window.Height()),
-      m_renderer(m_window.Handle(), m_window.Width(), m_window.Height())
+Framework::Framework(HINSTANCE instance) : m_window(instance, 1600, 900, L"KG is pain"), m_input(m_window.Handle()), m_camera(static_cast<float>(m_window.Width()) / m_window.Height()), m_renderer(m_window.Handle(), m_window.Width(), m_window.Height())
 {
-    m_window.SetMessageHandler([this](UINT message, WPARAM wParam, LPARAM lParam)
-    {
+    m_window.SetMessageHandler([this](UINT message, WPARAM wParam, LPARAM lParam) {
         m_input.ProcessMessage(message, wParam, lParam);
     });
 }
@@ -23,7 +18,7 @@ int Framework::Run()
         if (m_input.WasPressed('1')) m_renderer.SetPostProcessMode(PostProcessMode::None);
         if (m_input.WasPressed('2')) m_renderer.SetPostProcessMode(PostProcessMode::Grayscale);
         if (m_input.WasPressed('3')) m_renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
-        if (m_input.WasPressed('T')) m_textureAnimationEnabled = not m_textureAnimationEnabled;
+        if (m_input.WasPressed('T')) m_textureAnimationEnabled = !m_textureAnimationEnabled;
 
         if (m_textureAnimationEnabled)
             m_textureAnimationTime += m_timer.DeltaSeconds();
@@ -49,8 +44,6 @@ void Framework::UpdateWindowTitle(float deltaTime)
     if (m_renderer.GetPostProcessMode() == PostProcessMode::Grayscale) effect = L"Grayscale";
     else if (m_renderer.GetPostProcessMode() == PostProcessMode::SobelEdges) effect = L"Sobel edges";
     std::wstringstream title;
-    title << L"KG is pain / Post FX [1/2/3]: " << effect << L" / culling: Octree"
-          << L" / visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount()
-          << L" / FPS " << fps;
+    title << L"KG is pain / Post FX [1/2/3]: " << effect << L" / culling: Octree" << L" / visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount() << L" / terrain patches " << m_renderer.VisibleTerrainPatchCount() << L" / FPS " << fps;
     m_window.SetTitle(title.str());
 }

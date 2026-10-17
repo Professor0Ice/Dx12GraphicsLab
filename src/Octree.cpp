@@ -2,8 +2,7 @@
 
 using namespace DirectX;
 
-Octree::Octree(BoundingBox worldBounds, uint32_t maxDepth, uint32_t capacity)
-    : m_root(std::make_unique<Node>()), m_maxDepth(maxDepth), m_capacity(capacity)
+Octree::Octree(BoundingBox worldBounds, uint32_t maxDepth, uint32_t capacity) : m_root(std::make_unique<Node>()), m_maxDepth(maxDepth), m_capacity(capacity)
 {
     m_root->bounds = worldBounds;
 }
@@ -26,31 +25,23 @@ int Octree::ContainingChild(const Node& node, const BoundingBox& box) const
     const int x = maxPoint.x <= center.x ? 0 : (minPoint.x >= center.x ? 1 : -1);
     const int y = maxPoint.y <= center.y ? 0 : (minPoint.y >= center.y ? 1 : -1);
     const int z = maxPoint.z <= center.z ? 0 : (minPoint.z >= center.z ? 1 : -1);
-    return (x < 0 or y < 0 or z < 0) ? -1 : x | (y << 1) | (z << 2);
+    return (x < 0 || y < 0 || z < 0) ? -1 : x | (y << 1) | (z << 2);
 }
 
 void Octree::Subdivide(Node& node)
 {
-    const XMFLOAT3 childExtents{
-        node.bounds.Extents.x * 0.5f,
-        node.bounds.Extents.y * 0.5f,
-        node.bounds.Extents.z * 0.5f
-    };
+    const XMFLOAT3 childExtents{ node.bounds.Extents.x * 0.5f, node.bounds.Extents.y * 0.5f, node.bounds.Extents.z * 0.5f };
     for (int i = 0; i < 8; ++i)
     {
         node.children[i] = std::make_unique<Node>();
         node.children[i]->bounds.Extents = childExtents;
-        node.children[i]->bounds.Center = {
-            node.bounds.Center.x + ((i & 1) ? childExtents.x : -childExtents.x),
-            node.bounds.Center.y + ((i & 2) ? childExtents.y : -childExtents.y),
-            node.bounds.Center.z + ((i & 4) ? childExtents.z : -childExtents.z)
-        };
+        node.children[i]->bounds.Center = { node.bounds.Center.x + ((i & 1) ? childExtents.x : -childExtents.x), node.bounds.Center.y + ((i & 2) ? childExtents.y : -childExtents.y), node.bounds.Center.z + ((i & 4) ? childExtents.z : -childExtents.z) };
     }
 }
 
 void Octree::Insert(Node& node, uint32_t boundsIndex, uint32_t depth)
 {
-    if (not node.IsLeaf())
+    if (!node.IsLeaf())
     {
         const int child = ContainingChild(node, m_objects[boundsIndex].box);
         if (child >= 0)
@@ -61,7 +52,7 @@ void Octree::Insert(Node& node, uint32_t boundsIndex, uint32_t depth)
     }
 
     node.items.push_back(boundsIndex);
-    if (node.IsLeaf() and node.items.size() > m_capacity and depth < m_maxDepth)
+    if (node.IsLeaf() && node.items.size() > m_capacity && depth < m_maxDepth)
     {
         Subdivide(node);
         std::vector<uint32_t> retained;
@@ -90,11 +81,11 @@ void Octree::QueryNode(const Node& node, const BoundingFrustum& frustum,std::vec
 
     for (uint32_t item : node.items)
     {
-        // Объект добавляется, если его bounding box хотя бы частично попадает во frustum.
-        if (frustum.Contains(m_objects[item].box) not_eq DISJOINT)
+
+        if (frustum.Contains(m_objects[item].box) != DISJOINT)
             visible.push_back(m_objects[item].objectIndex);
     }
-    if (not node.IsLeaf())
+    if (!node.IsLeaf())
     {
         for (const auto& child : node.children)
             QueryNode(*child, frustum, visible);

@@ -25,8 +25,7 @@ private:
 
     void Insert(Node& node, uint32_t boundsIndex, uint32_t depth);
     void Subdivide(Node& node);
-    void QueryNode(const Node& node, const DirectX::BoundingFrustum& frustum,
-                   std::vector<uint32_t>& visible) const;
+    void QueryNode(const Node& node, const DirectX::BoundingFrustum& frustum, std::vector<uint32_t>& visible) const;
     int ContainingChild(const Node& node, const DirectX::BoundingBox& box) const;
 
     std::unique_ptr<Node> m_root;
@@ -34,4 +33,3 @@ private:
     uint32_t m_maxDepth;
     uint32_t m_capacity;
 };
-
