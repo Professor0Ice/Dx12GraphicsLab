@@ -1,6 +1,6 @@
 #include "Framework.hpp"
 
-Framework::Framework(HINSTANCE instance) : m_window(instance, 1600, 900, L"KG is pain"), m_input(m_window.Handle()), m_camera(static_cast<float>(m_window.Width()) / m_window.Height()), m_renderer(m_window.Handle(), m_window.Width(), m_window.Height())
+Framework::Framework(HINSTANCE instance) : m_window(instance, 1600, 900, L"Dx12GraphicsLab"), m_input(m_window.Handle()), m_camera(static_cast<float>(m_window.Width()) / m_window.Height()), m_renderer(m_window.Handle(), m_window.Width(), m_window.Height())
 {
     m_window.SetMessageHandler([this](UINT message, WPARAM wParam, LPARAM lParam) {
         m_input.ProcessMessage(message, wParam, lParam);
@@ -25,7 +25,7 @@ int Framework::Run()
 
         const auto mouse = m_input.ConsumeMouseDelta();
         m_camera.Update(m_input, mouse, m_timer.DeltaSeconds());
-        m_renderer.Render(m_camera, m_textureAnimationTime, m_timer.DeltaSeconds());
+        m_renderer.Render(m_camera, m_textureAnimationTime);
         UpdateWindowTitle(m_timer.DeltaSeconds());
         m_input.EndFrame();
     }
@@ -38,12 +38,7 @@ void Framework::UpdateWindowTitle(float deltaTime)
     if (m_titleTimer < 0.25f) return;
     m_titleTimer = 0.0f;
 
-    int fps = static_cast<int>(1.0f / deltaTime);
-
-    const wchar_t* effect = L"None";
-    if (m_renderer.GetPostProcessMode() == PostProcessMode::Grayscale) effect = L"Grayscale";
-    else if (m_renderer.GetPostProcessMode() == PostProcessMode::SobelEdges) effect = L"Sobel edges";
     std::wstringstream title;
-    title << L"KG is pain / Post FX [1/2/3]: " << effect << L" / culling: Octree" << L" / visible " << m_renderer.VisibleObjectCount() << L" / " << m_renderer.TotalObjectCount() << L" / terrain patches " << m_renderer.VisibleTerrainPatchCount() << L" / FPS " << fps;
+    title << L"KG is pain / terra draw: "<< m_renderer.VisibleTerrainPatchCount();
     m_window.SetTitle(title.str());
 }

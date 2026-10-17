@@ -28,15 +28,14 @@ std::unique_ptr<TerrainQuadtree::Node> TerrainQuadtree::BuildNode(XMFLOAT2 cente
     return node;
 }
 
-void TerrainQuadtree::Select(const BoundingFrustum& frustum, XMFLOAT3 cameraPosition, std::vector<TerrainPatch>& visiblePatches) const
+void TerrainQuadtree::Select(const BoundingFrustum& frustum, XMFLOAT3 cameraPosition,std::vector<TerrainPatch>& visiblePatches) const
 {
     visiblePatches.clear();
     SelectNode(*m_root, frustum, cameraPosition, visiblePatches);
 }
 
-void TerrainQuadtree::SelectNode(const Node& node, const BoundingFrustum& frustum, XMFLOAT3 cameraPosition, std::vector<TerrainPatch>& visiblePatches) const
+void TerrainQuadtree::SelectNode(const Node& node, const BoundingFrustum& frustum, XMFLOAT3 cameraPosition,std::vector<TerrainPatch>& visiblePatches) const
 {
-
     if (frustum.Contains(node.bounds) == DISJOINT)
         return;
 
@@ -45,7 +44,7 @@ void TerrainQuadtree::SelectNode(const Node& node, const BoundingFrustum& frustu
     const float dz = std::max(std::abs(cameraPosition.z - node.center.y) - halfSize, 0.0f);
     const float distanceToPatch = std::sqrt(dx * dx + dz * dz);
 
-    const bool split = node.depth < m_maxDepth && distanceToPatch < node.size * 1.35f;
+    const bool split = node.depth < m_maxDepth and distanceToPatch < node.size * 1.35f;
     if (split)
     {
         for (const auto& child : node.children)

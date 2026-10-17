@@ -136,7 +136,6 @@ RenderingSystem::RenderingSystem(HWND window, UINT width, UINT height) : m_width
     CreatePipelineStates();
     CreateConstantUpload();
     CreateTessellationCache();
-    CreateParticleResources();
     LoadAssets();
     BuildScene();
 
@@ -877,7 +876,6 @@ void RenderingSystem::BuildScene()
         m_objects.push_back(object);
     };
 
-    addObject({ 0,-1,0 }, { 200,1,200 }, { .10f,.10f,.10f,1 });
 
     uint32_t state = 0x12345678u;
     auto random01 = [&]() { state = state * 1664525u + 1013904223u; return (state >> 8) * (1.0f / 16777216.0f); };
@@ -886,7 +884,7 @@ void RenderingSystem::BuildScene()
         const float x = (random01() - .5f) * 220.0f;
         const float z = (random01() - .2f) * 220.0f;
         const float size = .25f + random01() * .65f;
-        addObject({ x, size, z }, { size, size * 2.0f, size }, { .2f + random01() * .7f, .25f + random01() * .65f, .3f + random01() * .6f, 1 });
+        addObject({ x, 3.0f, z }, { size, size * 2.0f, size }, { .2f + random01() * .7f, .25f + random01() * .65f, .3f + random01() * .6f, 1 });
     }
 
     m_sceneBounds.reserve(m_objects.size());
@@ -895,7 +893,7 @@ void RenderingSystem::BuildScene()
 
     m_octree = std::make_unique<Octree>(BoundingBox({ 0, 30, 40 }, { 150, 80, 170 }));
     m_octree->Build(m_sceneBounds);
-    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 64.0f }, 512.0f, -5.0f, 9.0f, 5);
+    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 0.0f }, 512.0f, -5.0f, 90.0f, 5);
 }
 
 const Mesh& RenderingSystem::MeshFor(const SceneObject& object) const
@@ -1334,7 +1332,7 @@ void RenderingSystem::DrawTransparentParticles(const Camera& camera)
     m_commandList->DrawInstanced(MaxParticles, 1, 0, 0);
 }
 
-void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime, float deltaTime, bool refreshTessellation)
+void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation)
 {
     ThrowIfFailed(m_allocators[m_frameIndex]->Reset(), "Reset command allocator");
     ThrowIfFailed(m_commandList->Reset(m_allocators[m_frameIndex].Get(), nullptr), "Reset command list");
@@ -1344,9 +1342,6 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     ID3D12DescriptorHeap* heaps[]{ m_srvHeap.Get() };
     m_commandList->SetDescriptorHeaps(1, heaps);
 
-    UpdateParticles(deltaTime);
-    UpdateReverseParticles(deltaTime);
-    SortReverseParticles(camera);
     if (refreshTessellation)
         UpdateTessellationCache(camera, totalTime);
     RenderShadowMaps(camera, totalTime);
@@ -1418,7 +1413,6 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     tessConstants.materialParameters = { .1f,.32f,1.0f,0.0f };
     tessConstants.tessellationParameters = { 12.0f, 1.0f, 3.0f, 45.0f };
     DrawCachedTessellation(tessConstants);
-    DrawParticles(camera);
     m_gbuffer.EndGeometry(m_commandList.Get());
     auto backBarrier = TransitionBarrier(m_backBuffers[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
     m_commandList->ResourceBarrier(1, &backBarrier);
@@ -1460,16 +1454,12 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
 
     m_gbuffer.RestoreDepthAfterPostProcess(m_commandList.Get());
 
-    const D3D12_CPU_DESCRIPTOR_HANDLE sceneDepth = m_gbuffer.Dsv();
-    m_commandList->OMSetRenderTargets(1, &backRtv, FALSE, &sceneDepth);
-    DrawTransparentParticles(camera);
-
     backBarrier = TransitionBarrier(m_backBuffers[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);
     m_commandList->ResourceBarrier(1, &backBarrier);
     ThrowIfFailed(m_commandList->Close(), "Close frame command list");
 }
 
-void RenderingSystem::Render(const Camera& camera, float totalTime, float deltaTime)
+void RenderingSystem::Render(const Camera& camera, float totalTime)
 {
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     WaitForFrame(m_frameIndex);
@@ -1479,7 +1469,7 @@ void RenderingSystem::Render(const Camera& camera, float totalTime, float deltaT
     UpdateVisibility(camera);
     UpdateTerrain(camera);
     UpdateShadowCascades(camera);
-    PopulateCommandList(camera, totalTime, deltaTime, refreshTessellation);
+    PopulateCommandList(camera, totalTime, refreshTessellation);
     ID3D12CommandList* lists[]{ m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists);
     if (refreshTessellation)

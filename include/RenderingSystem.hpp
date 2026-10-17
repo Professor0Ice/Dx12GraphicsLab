@@ -21,7 +21,7 @@ public:
     RenderingSystem(const RenderingSystem&) = delete;
     RenderingSystem& operator=(const RenderingSystem&) = delete;
 
-    void Render(const Camera& camera, float totalTime, float deltaTime);
+    void Render(const Camera& camera, float totalTime);
     void SetPostProcessMode(PostProcessMode mode) { m_postProcessMode = mode; }
     PostProcessMode GetPostProcessMode() const { return m_postProcessMode; }
     size_t VisibleObjectCount() const { return m_visibleIndices.size(); }
@@ -163,7 +163,7 @@ private:
     void UpdateTerrain(const Camera& camera);
     void UpdateShadowCascades(const Camera& camera);
     void RenderShadowMaps(const Camera& camera, float totalTime);
-    void PopulateCommandList(const Camera& camera, float totalTime, float deltaTime, bool refreshTessellation);
+    void PopulateCommandList(const Camera& camera, float totalTime, bool refreshTessellation);
     void UpdateTessellationCache(const Camera& camera, float totalTime);
     void DrawCachedTessellation(const ObjectConstants& constants);
     void UpdateParticles(float deltaTime);
