@@ -14,8 +14,7 @@ class TerrainQuadtree
 public:
     TerrainQuadtree(DirectX::XMFLOAT2 center, float size, float minimumHeight, float maximumHeight, uint32_t maxDepth);
 
-    void Select(const DirectX::BoundingFrustum& frustum, DirectX::XMFLOAT3 cameraPosition,
-                std::vector<TerrainPatch>& visiblePatches) const;
+    void Select(const DirectX::BoundingFrustum& frustum, DirectX::XMFLOAT3 cameraPosition,std::vector<TerrainPatch>& visiblePatches) const;
 
 private:
     struct Node

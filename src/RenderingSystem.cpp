@@ -893,7 +893,7 @@ void RenderingSystem::BuildScene()
 
     m_octree = std::make_unique<Octree>(BoundingBox({ 0, 30, 40 }, { 150, 80, 170 }));
     m_octree->Build(m_sceneBounds);
-    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 0.0f }, 512.0f, -5.0f, 90.0f, 5);
+    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 0.0f }, 512.0f, -20.0f, 90.0f, 5);
 }
 
 const Mesh& RenderingSystem::MeshFor(const SceneObject& object) const

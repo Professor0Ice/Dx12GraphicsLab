@@ -36,6 +36,21 @@ float SampleHeight(float2 uv)
     return gHeightMap.SampleLevel(gSampler, saturate(uv), 0).r;
 }
 
+static const float CheckerCellsPerAxis = 32.0f;
+static const float CheckerDrop = 12.0f;
+
+float CheckerHeightOffset(float2 uv)
+{
+    const int2 cell = (int2)floor(uv * CheckerCellsPerAxis);
+    const int parity = abs(cell.x + cell.y) & 1;
+    return parity != 0 ? -CheckerDrop : 0.0f;
+}
+
+float SampleTerrainWorldHeight(float2 uv)
+{
+    return SampleHeight(uv) * gTerrainParameters.x + gTerrainParameters.w + CheckerHeightOffset(uv);
+}
+
 VSOutput VSMain(VSInput input)
 {
     VSOutput output;
@@ -45,15 +60,16 @@ VSOutput VSMain(VSInput input)
     const float2 texel = 1.0f / float2(width, height);
 
     const float h = SampleHeight(atlasUv);
-    const float hL = SampleHeight(atlasUv - float2(texel.x, 0));
-    const float hR = SampleHeight(atlasUv + float2(texel.x, 0));
-    const float hD = SampleHeight(atlasUv - float2(0, texel.y));
-    const float hU = SampleHeight(atlasUv + float2(0, texel.y));
+    const float checkerOffset = CheckerHeightOffset(atlasUv);
+    const float hL = SampleTerrainWorldHeight(atlasUv - float2(texel.x, 0));
+    const float hR = SampleTerrainWorldHeight(atlasUv + float2(texel.x, 0));
+    const float hD = SampleTerrainWorldHeight(atlasUv - float2(0, texel.y));
+    const float hU = SampleTerrainWorldHeight(atlasUv + float2(0, texel.y));
     const float sampleSpan = 2.0f * gTerrainParameters.y / max((float)width - 1.0f, 1.0f);
-    const float3 localNormal = normalize(float3((hL - hR) * gTerrainParameters.x, sampleSpan, (hD - hU) * gTerrainParameters.x));
+    const float3 localNormal = normalize(float3(hL - hR, sampleSpan, hD - hU));
 
     float3 localPosition = input.position;
-    localPosition.y = h * gTerrainParameters.x + gTerrainParameters.w;
+    localPosition.y = h * gTerrainParameters.x + gTerrainParameters.w + checkerOffset;
     if (input.position.y < -0.5f)
         localPosition.y -= gTerrainParameters.z;
 
@@ -62,7 +78,7 @@ VSOutput VSMain(VSInput input)
     output.worldPosition = worldPosition.xyz;
     output.normal = localNormal;
     output.atlasUv = atlasUv;
-    output.height = h;
+    output.height = h + checkerOffset / max(gTerrainParameters.x, 0.0001f);
     return output;
 }
 
