@@ -24,6 +24,9 @@ public:
     void Render(const Camera& camera, float totalTime);
     void SetPostProcessMode(PostProcessMode mode) { m_postProcessMode = mode; }
     PostProcessMode GetPostProcessMode() const { return m_postProcessMode; }
+    void SetAtmosphere(float density, float pollution) { m_atmosphere = { std::clamp(density, 0.0f, 3.0f), std::clamp(pollution, 0.0f, 1.0f) }; }
+    float AtmosphereDensity() const { return m_atmosphere.x; }
+    float AtmospherePollution() const { return m_atmosphere.y; }
     size_t VisibleObjectCount() const { return m_visibleIndices.size(); }
     size_t TotalObjectCount() const { return m_objects.size(); }
     size_t VisibleTerrainPatchCount() const { return m_visibleTerrainPatches.size(); }
@@ -96,6 +99,7 @@ private:
         DirectX::XMFLOAT4 shadowParameters;
         DirectX::XMFLOAT4 cameraForward;
         DirectX::XMFLOAT4 postProcessParameters;
+        DirectX::XMFLOAT4 atmosphereParameters;
         std::array<LightGpu, MaxLights> lights;
     };
 
@@ -287,4 +291,5 @@ private:
     std::unique_ptr<TerrainQuadtree> m_terrainQuadtree;
     std::vector<TerrainPatch> m_visibleTerrainPatches;
     PostProcessMode m_postProcessMode = PostProcessMode::None;
+    DirectX::XMFLOAT2 m_atmosphere{ 1.0f, 0.15f };
 };

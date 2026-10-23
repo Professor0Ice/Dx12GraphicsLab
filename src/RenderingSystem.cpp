@@ -893,7 +893,7 @@ void RenderingSystem::BuildScene()
 
     m_octree = std::make_unique<Octree>(BoundingBox({ 0, 30, 40 }, { 150, 80, 170 }));
     m_octree->Build(m_sceneBounds);
-    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 0.0f }, 512.0f, -20.0f, 90.0f, 5);
+    m_terrainQuadtree = std::make_unique<TerrainQuadtree>(XMFLOAT2{ 0.0f, 0.0f }, 512.0f, -5.0f, 90.0f, 5);
 }
 
 const Mesh& RenderingSystem::MeshFor(const SceneObject& object) const
@@ -1435,6 +1435,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     const XMFLOAT3 cameraForward = camera.Direction();
     lighting.cameraForward = { cameraForward.x, cameraForward.y, cameraForward.z, 0.0f };
     lighting.postProcessParameters = { static_cast<float>(m_postProcessMode), 1.0f / static_cast<float>(m_width), 1.0f / static_cast<float>(m_height), 0.0f };
+    lighting.atmosphereParameters = { m_atmosphere.x, m_atmosphere.y, 0.0f, 0.0f };
 
     lighting.lights[SunLightIndex] = { { 0, 0, 0, 0 }, { SunDirection.x, SunDirection.y, SunDirection.z, DirectionalLightType }, SunColorAndIntensity, {}, {} };
 

@@ -19,6 +19,7 @@ cbuffer LightingConstants : register(b0)
     float4 gShadowParameters;
     float4 gCameraForward;
     float4 gPostProcessParameters;
+    float4 gAtmosphereParameters;
     Light gLights[16];
 };
 
@@ -33,6 +34,8 @@ Texture2D<uint> gStencil : register(t7);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 SamplerState gIblSampler : register(s2);
+
+#include "Atmosphere.hlsl"
 
 float DistributionGGX(float3 normal, float3 halfway, float roughness)
 {
@@ -179,10 +182,12 @@ float3 CalculateSceneColor(float2 uv)
     const float4 positionSample = gPosition.SampleLevel(gSampler, uv, 0.0f);
 
     float3 color = 0.0f;
+    float3 viewRay = ReconstructWorldDirection(uv);
+    float distanceToSurface = 1e6f;
     if (dot(normalSample.xyz, normalSample.xyz) < 0.01f)
     {
-        const float3 viewRay = ReconstructWorldDirection(uv);
-        color = gPrefilteredEnvironmentMap.SampleLevel(gIblSampler, viewRay, 0.0f).rgb * gIblParameters.y;
+        if (gAtmosphereParameters.x <= 0.0f)
+            color = gPrefilteredEnvironmentMap.SampleLevel(gIblSampler, viewRay, 0.0f).rgb * gIblParameters.y;
     }
     else
     {
@@ -199,7 +204,11 @@ float3 CalculateSceneColor(float2 uv)
             const float shadow = i == 0 ? EvaluateDirectionalShadow(positionSample.xyz, normal) : 1.0f;
             color += shadow * EvaluatePbrLight(gLights[i], positionSample.xyz, normal, viewDirection, albedo, metallic, roughness);
         }
+        viewRay = -viewDirection;
+        distanceToSurface = length(positionSample.xyz - gCameraAndLightCount.xyz) * AtmosphereWorldScale;
     }
+    if (gAtmosphereParameters.x > 0.0f)
+        color = ApplyAtmosphere(color, viewRay, distanceToSurface);
     return color;
 }
 

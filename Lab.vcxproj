@@ -120,6 +120,7 @@ xcopy "$(ProjectDir)assets" "$(OutDir)assets\" /E /I /Y &gt;nul</Command>
     <None Include="shader\Geometry.hlsl" />
     <None Include="shader\FullscreenQuad.hlsl" />
     <None Include="shader\Lighting.hlsl" />
+    <None Include="shader\Atmosphere.hlsl" />
     <None Include="shader\PostProcess.hlsl" />
     <None Include="shader\ParticleRender.hlsl" />
     <None Include="shader\ParticleSort.hlsl" />

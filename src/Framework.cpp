@@ -19,6 +19,13 @@ int Framework::Run()
         if (m_input.WasPressed('2')) m_renderer.SetPostProcessMode(PostProcessMode::Grayscale);
         if (m_input.WasPressed('3')) m_renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
         if (m_input.WasPressed('T')) m_textureAnimationEnabled = !m_textureAnimationEnabled;
+        float density = m_renderer.AtmosphereDensity();
+        float pollution = m_renderer.AtmospherePollution();
+        if (m_input.WasPressed(VK_UP)) pollution += 0.05f;
+        if (m_input.WasPressed(VK_DOWN)) pollution -= 0.05f;
+        if (m_input.WasPressed(VK_RIGHT)) density += 0.1f;
+        if (m_input.WasPressed(VK_LEFT)) density -= 0.1f;
+        m_renderer.SetAtmosphere(density, pollution);
 
         if (m_textureAnimationEnabled)
             m_textureAnimationTime += m_timer.DeltaSeconds();
@@ -39,6 +46,6 @@ void Framework::UpdateWindowTitle(float deltaTime)
     m_titleTimer = 0.0f;
 
     std::wstringstream title;
-    title << L"KG is pain / terra draw: "<< m_renderer.VisibleTerrainPatchCount();
+    title << L"KG is pain " << L" / Vosduh " << std::lround(m_renderer.AtmosphereDensity() * 100.0f) << L" / Pil " << std::lround(m_renderer.AtmospherePollution() * 100.0f);
     m_window.SetTitle(title.str());
 }

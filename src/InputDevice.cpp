@@ -50,7 +50,10 @@ void InputDevice::ProcessMessage(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
         if (wParam < m_keys.size())
+        {
+            if (!m_keys[wParam]) m_pressedKeys[wParam] = true;
             m_keys[wParam] = true;
+        }
         break;
     case WM_KEYUP:
     case WM_SYSKEYUP:
@@ -59,6 +62,7 @@ void InputDevice::ProcessMessage(UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_KILLFOCUS:
         m_keys.fill(false);
+        m_pressedKeys.fill(false);
         SetMouseCaptured(false);
         break;
     case WM_SETFOCUS:
@@ -92,5 +96,5 @@ DirectX::XMFLOAT2 InputDevice::ConsumeMouseDelta()
 
 void InputDevice::EndFrame()
 {
-    m_previousKeys = m_keys;
+    m_pressedKeys.fill(false);
 }

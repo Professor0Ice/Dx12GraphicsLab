@@ -10,7 +10,7 @@ public:
     void EndFrame();
 
     bool IsDown(uint8_t key) const { return m_keys[key]; }
-    bool WasPressed(uint8_t key) const { return m_keys[key] && !m_previousKeys[key]; }
+    bool WasPressed(uint8_t key) const { return m_pressedKeys[key]; }
     DirectX::XMFLOAT2 ConsumeMouseDelta();
     bool MouseCaptured() const { return m_captured; }
     void SetMouseCaptured(bool captured);
@@ -18,7 +18,7 @@ public:
 private:
     HWND m_window = nullptr;
     std::array<bool, 256> m_keys{};
-    std::array<bool, 256> m_previousKeys{};
+    std::array<bool, 256> m_pressedKeys{};
     float m_mouseDeltaX = 0.0f;
     float m_mouseDeltaY = 0.0f;
     bool m_captured = false;

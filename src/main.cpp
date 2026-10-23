@@ -11,6 +11,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             Camera camera(640.0f / 360.0f);
             RenderingSystem renderer(hiddenWindow.Handle(), 640, 360);
             renderer.Render(camera, 0.0f);
+            renderer.SetAtmosphere(1.0f, 0.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetAtmosphere(1.0f, 1.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetAtmosphere(3.0f, 1.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetAtmosphere(0.0f, 0.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetAtmosphere(1.0f, 0.15f);
             renderer.SetPostProcessMode(PostProcessMode::Grayscale);
             renderer.Render(camera, 0.0f);
             renderer.SetPostProcessMode(PostProcessMode::SobelEdges);

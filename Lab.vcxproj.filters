@@ -39,6 +39,7 @@
     <None Include="shader\Geometry.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\FullscreenQuad.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\Lighting.hlsl"><Filter>Shaders</Filter></None>
+    <None Include="shader\Atmosphere.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\PostProcess.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\ParticleRender.hlsl"><Filter>Shaders</Filter></None>
     <None Include="shader\ParticleSort.hlsl"><Filter>Shaders</Filter></None>
