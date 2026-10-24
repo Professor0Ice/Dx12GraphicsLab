@@ -20,6 +20,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             renderer.SetAtmosphere(0.0f, 0.0f);
             renderer.Render(camera, 0.0f);
             renderer.SetAtmosphere(1.0f, 0.15f);
+            renderer.SetSunAngle(0.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetSunAngle(90.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetSunAngle(-10.0f);
+            renderer.Render(camera, 0.0f);
+            renderer.SetSunAngle(-90.0f);
+            renderer.Render(camera, 0.0f);
             renderer.SetPostProcessMode(PostProcessMode::Grayscale);
             renderer.Render(camera, 0.0f);
             renderer.SetPostProcessMode(PostProcessMode::SobelEdges);

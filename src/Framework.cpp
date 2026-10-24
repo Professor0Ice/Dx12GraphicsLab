@@ -15,10 +15,8 @@ int Framework::Run()
         m_timer.Tick();
         if (m_input.WasPressed(VK_ESCAPE))
             m_input.SetMouseCaptured(false);
-        if (m_input.WasPressed('1')) m_renderer.SetPostProcessMode(PostProcessMode::None);
-        if (m_input.WasPressed('2')) m_renderer.SetPostProcessMode(PostProcessMode::Grayscale);
-        if (m_input.WasPressed('3')) m_renderer.SetPostProcessMode(PostProcessMode::SobelEdges);
-        if (m_input.WasPressed('T')) m_textureAnimationEnabled = !m_textureAnimationEnabled;
+        if (m_input.WasPressed('Y')) m_sunRotationEnabled = !m_sunRotationEnabled;
+        if (m_sunRotationEnabled) m_renderer.SetSunAngle(m_renderer.SunAngle() - m_timer.DeltaSeconds() * 4.0f);
         float density = m_renderer.AtmosphereDensity();
         float pollution = m_renderer.AtmospherePollution();
         if (m_input.WasPressed(VK_UP)) pollution += 0.05f;

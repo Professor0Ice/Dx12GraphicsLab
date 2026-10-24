@@ -4,7 +4,6 @@ using namespace DirectX;
 
 namespace
 {
-    constexpr XMFLOAT3 SunDirection{ -0.25f, -1.0f, 0.20f };
     constexpr XMFLOAT4 SunColorAndIntensity{ 1.0f, 0.92f, 0.78f, 1.35f };
     constexpr float DirectionalLightType = 0.0f;
     constexpr UINT SunLightIndex = 0;
@@ -950,8 +949,8 @@ void RenderingSystem::UpdateShadowCascades(const Camera& camera)
     const float farPlane = camera.FarPlane();
     const float tanHalfFov = std::tan(camera.FieldOfView() * 0.5f);
     const XMMATRIX inverseView = XMMatrixInverse(nullptr, camera.View());
-    const XMVECTOR lightDirection = XMVector3Normalize(XMLoadFloat3(&SunDirection));
-    const XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    const XMVECTOR lightDirection = XMVector3Normalize(XMLoadFloat3(&m_sunDirection));
+    const XMVECTOR worldUp = std::abs(m_sunDirection.y) > 0.99f ? XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f) : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     const XMVECTOR lightRight = XMVector3Normalize(XMVector3Cross(worldUp, lightDirection));
     const XMVECTOR lightUp = XMVector3Normalize(XMVector3Cross(lightDirection, lightRight));
 
@@ -1437,7 +1436,7 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
     lighting.postProcessParameters = { static_cast<float>(m_postProcessMode), 1.0f / static_cast<float>(m_width), 1.0f / static_cast<float>(m_height), 0.0f };
     lighting.atmosphereParameters = { m_atmosphere.x, m_atmosphere.y, 0.0f, 0.0f };
 
-    lighting.lights[SunLightIndex] = { { 0, 0, 0, 0 }, { SunDirection.x, SunDirection.y, SunDirection.z, DirectionalLightType }, SunColorAndIntensity, {}, {} };
+    lighting.lights[SunLightIndex] = { { 0, 0, 0, 0 }, { m_sunDirection.x, m_sunDirection.y, m_sunDirection.z, DirectionalLightType }, SunColorAndIntensity, {}, {} };
 
     lighting.lights[1] = { {-6,5,8,13}, {0,0,0,1}, {1.0f,.15f,.08f,10}, {}, {} };
     lighting.lights[2] = { { 6,4,18,14}, {0,0,0,1}, {.08f,.25f,1.0f,11}, {}, {} };
@@ -1462,6 +1461,8 @@ void RenderingSystem::PopulateCommandList(const Camera& camera, float totalTime,
 
 void RenderingSystem::Render(const Camera& camera, float totalTime)
 {
+    const float sunAngle = XMConvertToRadians(m_sunAngle);
+    m_sunDirection = { -0.6f * std::cos(sunAngle), -std::sin(sunAngle), -0.8f * std::cos(sunAngle) };
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     WaitForFrame(m_frameIndex);
     const XMFLOAT3 cameraPosition = camera.Position();

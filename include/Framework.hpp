@@ -22,4 +22,5 @@ private:
     float m_titleTimer = 0.0f;
     float m_textureAnimationTime = 0.0f;
     bool m_textureAnimationEnabled = false;
+    bool m_sunRotationEnabled = false;
 };

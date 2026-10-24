@@ -27,6 +27,8 @@ public:
     void SetAtmosphere(float density, float pollution) { m_atmosphere = { std::clamp(density, 0.0f, 3.0f), std::clamp(pollution, 0.0f, 1.0f) }; }
     float AtmosphereDensity() const { return m_atmosphere.x; }
     float AtmospherePollution() const { return m_atmosphere.y; }
+    void SetSunAngle(float degrees) { m_sunAngle = std::remainder(degrees, 360.0f); }
+    float SunAngle() const { return m_sunAngle; }
     size_t VisibleObjectCount() const { return m_visibleIndices.size(); }
     size_t TotalObjectCount() const { return m_objects.size(); }
     size_t VisibleTerrainPatchCount() const { return m_visibleTerrainPatches.size(); }
@@ -292,4 +294,6 @@ private:
     std::vector<TerrainPatch> m_visibleTerrainPatches;
     PostProcessMode m_postProcessMode = PostProcessMode::None;
     DirectX::XMFLOAT2 m_atmosphere{ 1.0f, 0.15f };
+    float m_sunAngle = 72.0f;
+    DirectX::XMFLOAT3 m_sunDirection{};
 };
